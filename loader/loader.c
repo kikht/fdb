@@ -3,7 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <arpa/inet.h>
-#include <geos_c.h>
+#include <liblwgeom.h>
 
 #define PG_COPY_HEADER_DATA "PGCOPY\n\377\r\n\0\0\0\0\0\0\0\0\0"
 #define PG_COPY_HEADER_SIZE 19
@@ -53,6 +53,11 @@ void writeDouble( FILE * out, double value )
     writeInt64( out, swap.i );
 }
 
+void lwgeom_init_allocators() 
+{
+    lwgeom_install_default_allocators();
+}
+
 int main ( int argc, char ** argv )
 {
     FILE * output = stdout;
@@ -60,12 +65,13 @@ int main ( int argc, char ** argv )
     char str[] = "test string";
     size_t strLength = strlen( str );
     double doubleVal = 0.1;
-    GEOSCoordSequence * coord;
-    GEOSGeometry * point;
-    GEOSWKBWriter * wkbWriter;
     unsigned char * buf;
     size_t bufSize;
     int64_t timeVal = time( NULL );
+    POINT4D point = { 5.0, 6.0, 0, 0 };
+    POINTARRAY * ptArray;
+    LWPOINT * lwPoint;
+    LWGEOM * geom;
     
     /* Write header */
     fwrite( PG_COPY_HEADER_DATA, PG_COPY_HEADER_SIZE, 1, output );
@@ -85,19 +91,15 @@ int main ( int argc, char ** argv )
     writeDouble( output, doubleVal );
     
     /* Write geometry */
-    initGEOS( NULL, NULL );
-    coord = GEOSCoordSeq_create( 1, 2 );
-    GEOSCoordSeq_setX( coord, 0, 2.0 );
-    GEOSCoordSeq_setY( coord, 0, 3.0 );
-    point = GEOSGeom_createPoint( coord );
-    wkbWriter = GEOSWKBWriter_create();
-    buf = GEOSWKBWriter_write( wkbWriter, point, &bufSize );
+    ptArray = ptarray_construct( 0, 0, 1 );
+    ptarray_set_point4d( ptArray, 0, &point );
+    lwPoint = lwpoint_construct( 0, NULL, ptArray );
+    geom = lwpoint_as_lwgeom( lwPoint );
+    buf = lwgeom_to_wkb( geom, 0, &bufSize );
     writeInt32( output, bufSize );
     fwrite( buf, bufSize, 1, output );
-    GEOSFree( buf );
-    GEOSWKBWriter_destroy( wkbWriter );
-    GEOSGeom_destroy( point );
-    finishGEOS();
+    lwfree( buf );
+    lwpoint_free( lwPoint ); /*frees point array*/
 
     /* Write datetime */
     timeVal = ( timeVal - PG_EPOCH_OFFSET ) * 1000000;
