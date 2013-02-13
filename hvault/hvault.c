@@ -1,13 +1,12 @@
+#include "hvault.h"
+
 /* PostgreSQL */
-#include <postgres.h>
 #include <access/skey.h>
 #include <catalog/namespace.h>
 #include <catalog/pg_type.h>
 #include <commands/defrem.h>
-#include <commands/explain.h>
-#include <foreign/fdwapi.h>
+#include <executor/spi.h>
 #include <foreign/foreign.h>
-#include <funcapi.h>
 #include <nodes/bitmapset.h>
 #include <optimizer/pathnode.h>
 #include <optimizer/paths.h>
@@ -16,6 +15,7 @@
 #include <utils/builtins.h>
 #include <utils/memutils.h>
 #include <utils/rel.h>
+#include <utils/timestamp.h>
 
 /* PostGIS */
 #include <liblwgeom.h>
@@ -24,166 +24,10 @@
 #include <hdf/mfhdf.h>
 #include <hdf/hlimits.h>
 
+
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
-
-#define TUPLES_PER_FILE (double)(2030*1354)
-/* 4 (size) + 3 (srid) + 1 (flags) + 4 (type) + 4 (num points) + 2 * 8 (coord)*/
-#define POINT_SIZE 32
-/* 4 (size) + 3 (srid) + 1 (flags) + 4 * 4 (bbox) + 4 (type) + 4 (num rings)
- * +  4 (num points) + 5 * 2 * 8 (coords) */
-#define FOOTPRINT_SIZE 116
-
-typedef enum HvaultColumnType
-{
-    HvaultColumnNull,
-    HvaultColumnFloatVal,
-    HvaultColumnPoint,
-    HvaultColumnFootprint,
-    HvaultColumnFileIdx,
-    HvaultColumnLineIdx,
-    HvaultColumnSampleIdx,
-    HvaultColumnTime
-} HvaultColumnType;
-
-/*
- * FDW-specific information for RelOptInfo.fdw_private.
- */
-typedef struct
-{
-    List *coltypes; /* list of HvaultColumnType as int */
-    char *catalog; /* name of catalog table */
-} HvaultPlanState;
-
-typedef struct 
-{
-    char * name;
-    void *cur, *next, *prev;
-    void *fill_val;
-    int32_t id, type;
-    double scale, offset;
-    bool haswindow;
-} HvaultSDSBuffer;
-
-typedef struct 
-{
-    char const * filename;
-    List *sds; /* list of HvaultSDSBuffer */
-    float *prevbrdlat, *prevbrdlon, *nextbrdlat, *nextbrdlon;
-
-    int32_t sd_id;
-    int num_samples, num_lines;
-} HvaultHDFFile;
-
-/*
- * FDW-specific information for ForeignScanState.fdw_state.
- */
-typedef struct
-{
-    MemoryContext memcxt;
-
-    AttrNumber natts;
-    List *coltypes;
-    HvaultSDSBuffer **colbuffer;
-    Datum *values;
-    bool *nulls;
-
-    HvaultSDSBuffer *lat, *lon;
-    HvaultHDFFile file;
-
-    int cur_line, cur_sample;
-    int scan_size;
-    bool has_footprint;
-} HvaultExecState;
-
-
-/*
- * SQL functions
- */
-extern Datum hvault_fdw_validator(PG_FUNCTION_ARGS);
-extern Datum hvault_fdw_handler(PG_FUNCTION_ARGS);
-
-/* 
- * FDW callback routines 
- */
-static void 
-hvaultGetRelSize(PlannerInfo *root, 
-                 RelOptInfo *baserel, 
-                 Oid foreigntableid);
-static void 
-hvaultGetPaths(PlannerInfo *root, 
-               RelOptInfo *baserel,
-               Oid foreigntableid);
-static ForeignScan *
-hvaultGetPlan(PlannerInfo *root, 
-              RelOptInfo *baserel,
-              Oid foreigntableid, 
-              ForeignPath *best_path,
-              List *tlist, 
-              List *scan_clauses);
-static void hvaultExplain(ForeignScanState *node, ExplainState *es);
-static void hvaultBegin(ForeignScanState *node, int eflags);
-static TupleTableSlot *hvaultIterate(ForeignScanState *node);
-static void hvaultReScan(ForeignScanState *node);
-static void hvaultEnd(ForeignScanState *node);
-/*
-static bool 
-hvaultAnalyze(Relation relation, 
-              AcquireSampleRowsFunc *func,
-              BlockNumber *totalpages );
-*/
-
-/*
- * Footprint interpolation routines
- */
-static inline float interpolate_point(float p1, float p2, float p3, float p4);
-static inline float extrapolate_point(float n1, float n2, float p1, float p2);
-static inline float extrapolate_corner_point(float c, float l, 
-                                             float u, float lu);
-static void extrapolate_line(size_t m, 
-                             float const *p, 
-                             float const *n, 
-                             float *r);
-static void interpolate_line(size_t m, 
-                             float const *p, 
-                             float const *n, 
-                             float *r);
-static void calc_next_footprint(HvaultExecState const *scan, 
-                                HvaultHDFFile *file);
-/*
- * HDF utils
- */
-static size_t hdf_sizeof(int32_t type);
-static double hdf_value (int32_t type, void *buffer, size_t offset);
-static bool   hdf_cmp   (int32_t type, void *buffer, size_t offset, void *val);
-
-/*
- * Options routines 
- */
-static HvaultColumnType parse_column_type(char *type);
-static List *get_column_types(RelOptInfo *baserel, Oid foreigntableid);
-static void  check_column_types(List *coltypes, TupleDesc tupdesc);
-static char *get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc);
-static int   get_row_width(HvaultPlanState *fdw_private);
-static char * get_table_option(Oid foreigntableoid, char *option);
-
-/* 
- * Tuple fill utilities
- */
-static void fill_float_val(HvaultExecState const *scan, AttrNumber attnum);
-static void fill_point_val(HvaultExecState const *scan, AttrNumber attnum);
-static void fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum);
-
-
-static List *get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel);
-static HvaultSDSBuffer *get_sds_buffer(List **buffers, char *name);
-static void open_hdf_file(HvaultExecState const *scan,
-                          char const *filename,
-                          HvaultHDFFile *file);
-static void fetch_next_line(HvaultExecState *scan);
-
-
 
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
@@ -241,11 +85,10 @@ hvaultGetRelSize(PlannerInfo *root,
      * Don't forget about equivalence classes!
      */    
 
-
     fdw_private->coltypes = get_column_types(baserel, foreigntableid);
+    fdw_private->catalog = get_table_option(foreigntableid, "catalog");
     baserel->width = get_row_width(fdw_private);
-
-    num_files = 1;
+    num_files = get_num_files(fdw_private);
     tuples_per_file = TUPLES_PER_FILE;
     scale_factor = 1; /* 4 for 500m, 16 for 250m */
     baserel->rows = num_files * tuples_per_file * scale_factor ; 
@@ -350,14 +193,14 @@ static void
 hvaultBegin(ForeignScanState *node, int eflags)
 {
     HvaultExecState *fdw_exec_state;
-    Oid foreigntableoid = RelationGetRelid(node->ss.ss_currentRelation);
+    Oid foreigntableid = RelationGetRelid(node->ss.ss_currentRelation);
     ForeignScan *plan = (ForeignScan *) node->ss.ps.plan;
     List *fdw_plan_private = plan->fdw_private;
     /*List *fdw_exprs = plan->fdw_exprs;*/
     TupleDesc tupdesc = node->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
     ListCell *l;
     AttrNumber attnum;
-    MemoryContext scan_cxt, oldmemcxt;
+    MemoryContext file_cxt;
 
 
     elog(DEBUG1, "in hvaultBegin");
@@ -367,21 +210,20 @@ hvaultBegin(ForeignScanState *node, int eflags)
     if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
         return;
 
-    scan_cxt = AllocSetContextCreate(node->ss.ps.state->es_query_cxt,
-                                     "hvault_fdw per-scan data",
+    file_cxt = AllocSetContextCreate(node->ss.ps.state->es_query_cxt,
+                                     "hvault_fdw per-file data",
                                      ALLOCSET_DEFAULT_MINSIZE,
                                      ALLOCSET_DEFAULT_INITSIZE,
                                      ALLOCSET_DEFAULT_MAXSIZE);
-    oldmemcxt = MemoryContextSwitchTo(scan_cxt);
 
     fdw_exec_state = (HvaultExecState *) palloc(sizeof(HvaultExecState));
-    fdw_exec_state->memcxt = scan_cxt;
     fdw_exec_state->natts = tupdesc->natts;
     fdw_exec_state->colbuffer = palloc0(sizeof(HvaultSDSBuffer *) * 
                                         fdw_exec_state->natts);
     fdw_exec_state->coltypes = fdw_plan_private;
     fdw_exec_state->values = palloc(sizeof(Datum) * fdw_exec_state->natts);
     fdw_exec_state->nulls = palloc(sizeof(bool) * fdw_exec_state->natts);
+    fdw_exec_state->file.filememcxt = file_cxt;
     fdw_exec_state->file.sd_id = FAIL;
     fdw_exec_state->file.num_lines = -1;
     fdw_exec_state->file.num_samples = -1;
@@ -389,13 +231,16 @@ hvaultBegin(ForeignScanState *node, int eflags)
     fdw_exec_state->file.prevbrdlon = NULL;
     fdw_exec_state->file.nextbrdlat = NULL;
     fdw_exec_state->file.nextbrdlon = NULL;
-    fdw_exec_state->cur_line = 0;
-    fdw_exec_state->cur_sample = 0;
+    fdw_exec_state->file.filename = NULL;
+    fdw_exec_state->cur_line = -1;
+    fdw_exec_state->cur_sample = -1;
     fdw_exec_state->lat = NULL;
     fdw_exec_state->lon = NULL;
     fdw_exec_state->has_footprint = false;
     /* TODO: variable scan size, depending on image scale & user params */
     fdw_exec_state->scan_size = 10;
+    fdw_exec_state->catalog = NULL;
+    fdw_exec_state->file_cursor_name = NULL;
 
     check_column_types(fdw_exec_state->coltypes, tupdesc);
     /* fill required sds list & helper pointers */
@@ -407,7 +252,7 @@ hvaultBegin(ForeignScanState *node, int eflags)
             case HvaultColumnFloatVal:
                 fdw_exec_state->colbuffer[attnum] = get_sds_buffer(
                     &(fdw_exec_state->file.sds), 
-                    get_column_sds(foreigntableoid, attnum, tupdesc));
+                    get_column_sds(foreigntableid, attnum, tupdesc));
                 break;
             case HvaultColumnPoint:
                 fdw_exec_state->lat = get_sds_buffer(
@@ -434,11 +279,18 @@ hvaultBegin(ForeignScanState *node, int eflags)
     }
     elog(DEBUG1, "SDS buffers: %d", list_length(fdw_exec_state->file.sds));
 
-    fdw_exec_state->file.filename = get_table_option(foreigntableoid, 
-                                                     "filename");
-    Assert(fdw_exec_state->file.filename);
+    fdw_exec_state->catalog = get_table_option(foreigntableid, "catalog");
+    if (!fdw_exec_state->catalog)
+    {
+        fdw_exec_state->file.filename = get_table_option(foreigntableid, 
+                                                         "filename");
+        if (!fdw_exec_state->file.filename)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Can't find catalog or filename option")));
+        }
+    }
 
-    MemoryContextSwitchTo(oldmemcxt);
     node->fdw_state = fdw_exec_state;
 }
 
@@ -461,34 +313,49 @@ hvaultIterate(ForeignScanState *node)
 
     ExecClearTuple(slot);
 
-    /* 1. Open file */
-    if (fdw_exec_state->file.sd_id == FAIL)
-    {
-        MemoryContext oldmemcxt;
-        elog(DEBUG1, "loading hdf file");
-        Assert(fdw_exec_state->memcxt);
-        oldmemcxt = MemoryContextSwitchTo(fdw_exec_state->memcxt);
-        open_hdf_file(fdw_exec_state, fdw_exec_state->file.filename, 
-                      &fdw_exec_state->file);
-        MemoryContextSwitchTo(oldmemcxt);
-
-        fetch_next_line(fdw_exec_state);
-    }
-
-    /* 2. Fetch line */
+    /* Next line needed? (initial state -1 == -1) */
     if (fdw_exec_state->cur_sample == fdw_exec_state->file.num_samples)
     {
         fdw_exec_state->cur_sample = 0;
         fdw_exec_state->cur_line++;
+        /* Next file needed? */
         if (fdw_exec_state->cur_line >= fdw_exec_state->file.num_lines) {
-            /* End of scan, return empty tuple */
-            return slot;
+            if (fdw_exec_state->catalog)
+            {
+                if (!fetch_next_file(fdw_exec_state))
+                {
+                    /* End of scan, return empty tuple*/
+                    return slot;
+                }
+            } 
+            else 
+            {
+                /* Single file case */
+                /* Initialization or end of file? */
+                if (fdw_exec_state->file.sd_id == FAIL)
+                {
+                    char const *filename = fdw_exec_state->file.filename;
+                    if (!hdf_file_open(fdw_exec_state, filename, 
+                                       &fdw_exec_state->file))
+                    {
+                        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                                        errmsg("Can't open file %s", 
+                                               filename)));
+                        return NULL; /* Will never reach here */
+                    }
+                    fdw_exec_state->cur_file = 0;
+                }
+                else
+                {
+                    /* End of scan, returning empty tuple */
+                    return slot;
+                }
+            }
         }
-
         fetch_next_line(fdw_exec_state);
     }
 
-    /* 3. Fill tuple */
+    /* Fill tuple */
     attnum = 0;
     foreach(l, fdw_exec_state->coltypes)
     {
@@ -508,7 +375,8 @@ hvaultIterate(ForeignScanState *node)
                 fill_footprint_val(fdw_exec_state, attnum);
                 break;
             case HvaultColumnFileIdx:
-                fdw_exec_state->values[attnum] = Int32GetDatum(1);
+                fdw_exec_state->values[attnum] = 
+                    Int32GetDatum(fdw_exec_state->cur_file);
                 fdw_exec_state->nulls[attnum] = false;
                 break;
             case HvaultColumnLineIdx:
@@ -546,6 +414,8 @@ hvaultReScan(ForeignScanState *node)
     HvaultExecState *fdw_exec_state = (HvaultExecState *) node->fdw_state;
     elog(DEBUG1, "in hvaultReScan");
     
+    //TODO: cursor reinitialize
+
     fdw_exec_state->cur_line = 0;
     fdw_exec_state->cur_sample = 0;
     if (fdw_exec_state->file.sd_id != FAIL)
@@ -559,34 +429,22 @@ static void
 hvaultEnd(ForeignScanState *node)
 {
     HvaultExecState *fdw_exec_state = (HvaultExecState *) node->fdw_state;
-    MemoryContext scan_ctx;
     elog(DEBUG1, "in hvaultEnd");
     if (fdw_exec_state == NULL)
         return;
     
     if (fdw_exec_state->file.sd_id != FAIL)
     {
-        ListCell *l;
-        foreach(l, fdw_exec_state->file.sds)
-        {
-            HvaultSDSBuffer *sds = (HvaultSDSBuffer *) lfirst(l);
-            if (sds->id == FAIL) continue;
-            if (SDendaccess(sds->id) == FAIL)
-            {
-                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR), 
-                                errmsg("Can't close SDS")));
-            }
-            sds->id = FAIL;
-        }
-        if (SDend(fdw_exec_state->file.sd_id) == FAIL)
-        {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Can't close HDF file")));
-        }
+        hdf_file_close(&fdw_exec_state->file);
     }
 
-    scan_ctx = fdw_exec_state->memcxt;
-    MemoryContextDelete(scan_ctx);
+    if (fdw_exec_state->file_cursor_name != NULL)
+    {
+        Portal file_cursor = SPI_cursor_find(fdw_exec_state->file_cursor_name);
+        SPI_cursor_close(file_cursor);
+    }
+
+    MemoryContextDelete(fdw_exec_state->file.filememcxt);
 }
 
 
@@ -597,10 +455,10 @@ hvaultEnd(ForeignScanState *node)
 
 
 static char * 
-get_table_option(Oid foreigntableoid, char *option)
+get_table_option(Oid foreigntableid, char *option)
 {
     ListCell *l;
-    ForeignTable *foreigntable = GetForeignTable(foreigntableoid);
+    ForeignTable *foreigntable = GetForeignTable(foreigntableid);
     foreach(l, foreigntable->options)
     {
         DefElem *def = (DefElem *) lfirst(l);
@@ -609,9 +467,8 @@ get_table_option(Oid foreigntableoid, char *option)
             return defGetString(def);
         }
     }
-    ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                    errmsg("Can't find table option %s", option)));
-    return NULL; /* Will never reach here */
+    elog(DEBUG1, "Can't find table option %s", option);
+    return NULL;
 }
 
 
@@ -814,7 +671,7 @@ check_column_types(List *coltypes, TupleDesc tupdesc)
                              errhint("Index column must have int4 type")));
                 break;
             case HvaultColumnTime:
-                if (tupdesc->attrs[attnum]->atttypid != TIMESTAMPTZOID)
+                if (tupdesc->attrs[attnum]->atttypid != TIMESTAMPOID)
                     ereport(ERROR, 
                             (errcode(ERRCODE_FDW_ERROR),
                              errmsg("Invalid column type %d", attnum),
@@ -1219,20 +1076,58 @@ calc_next_footprint(HvaultExecState const *scan, HvaultHDFFile *file)
     }
 }
 
-static void
-open_hdf_file(HvaultExecState const *scan,
+static void   
+hdf_file_close(HvaultHDFFile *file)
+{
+    ListCell *l;
+
+    Assert(file->sd_id != FAIL);
+    foreach(l, file->sds)
+    {
+        HvaultSDSBuffer *sds = (HvaultSDSBuffer *) lfirst(l);
+        if (sds->id == FAIL) continue;
+        if (SDendaccess(sds->id) == FAIL)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR), 
+                            errmsg("Can't close SDS")));
+        }
+        sds->id = FAIL;
+        sds->cur = sds->next = sds->prev = NULL;
+        sds->fill_val = NULL;
+    }
+    if (SDend(file->sd_id) == FAIL)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't close HDF file")));
+    }
+
+    file->sd_id = FAIL;
+    file->filename = NULL;
+    MemoryContextReset(file->filememcxt);
+    file->prevbrdlat = file->prevbrdlon = file->nextbrdlat = 
+                       file->nextbrdlon = NULL;
+    file->num_samples = -1;
+    file->num_lines = -1;
+}
+
+static bool
+hdf_file_open(HvaultExecState const *scan,
               char const *filename,
               HvaultHDFFile *file)
 {
     ListCell *l;
+    MemoryContext oldmemcxt;
+
+    elog(DEBUG1, "loading hdf file %s", filename);
+    Assert(file->filememcxt);
+    oldmemcxt = MemoryContextSwitchTo(file->filememcxt);
 
     file->filename = filename;
     file->sd_id = SDstart(file->filename, DFACC_READ);
     if (file->sd_id == FAIL)
     {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't open HDF file %s", file->filename)));
-        return; /* will never reach here */
+        elog(WARNING, "Can't open HDF file %s, skipping file", file->filename);
+        return false; 
     }
     
     foreach(l, file->sds)
@@ -1247,54 +1142,61 @@ open_hdf_file(HvaultExecState const *scan,
         sds_idx = SDnametoindex(file->sd_id, sds->name);
         if (sds_idx == FAIL)
         {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Can't find dataset %s in file %s",
-                                   sds->name, file->filename)));
-            return; /* will never reach here */       
+            elog(WARNING, "Can't find dataset %s in file %s, skipping file",
+                 sds->name, file->filename);
+            MemoryContextSwitchTo(oldmemcxt);
+            hdf_file_close(file);
+            return false;
         }
         /* Select SDS */
         sds->id = SDselect(file->sd_id, sds_idx);
         if (sds->id == FAIL)
         {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Can't open dataset %s in file %s",
-                                   sds->name, file->filename)));
-            return; /* will never reach here */
+            elog(WARNING, "Can't open dataset %s in file %s, skipping file",
+                 sds->name, file->filename);
+            MemoryContextSwitchTo(oldmemcxt);
+            hdf_file_close(file);
+            return false;
         }
         /* Get dimension sizes */
         if (SDgetinfo(sds->id, NULL, &rank, dims, &sds->type, &sdnattrs) == 
             FAIL)
         {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Can't get info about %s in file %s",
-                                   sds->name, file->filename)));
-            return; /* will never reach here */
+            elog(WARNING, "Can't get info about %s in file %s, skipping file",
+                 sds->name, file->filename);
+            MemoryContextSwitchTo(oldmemcxt);
+            hdf_file_close(file);
+            return false;
         }
         if (rank != 2)
         {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Hvault doesn't handle %dd datasets",
-                                   rank)));
-            return; /* will never reach here */
+            elog(WARNING, "SDS %s in file %s has %dd dataset, skipping file",
+                 sds->name, file->filename, rank);
+            MemoryContextSwitchTo(oldmemcxt);
+            hdf_file_close(file);
+            return false;
         }
         if (file->num_lines == -1)
         {
             file->num_lines = dims[0];
             if (file->num_lines < 2 && scan->has_footprint)
             {
-                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Can't get footprint with %d lines",
-                                   file->num_lines)));
-                return; /* will never reach here */       
+                elog(WARNING, 
+                     "SDS %s in file %s has %d lines. Can't get footprint, skipping file",
+                     sds->name, file->filename, file->num_lines);
+                MemoryContextSwitchTo(oldmemcxt);
+                hdf_file_close(file);
+                return false;
             }
         } 
         else if (dims[0] != file->num_lines)
         {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Incompatible datasets in table"),
-                errhint("Number of lines (%d) in sds %s differs from %d",
-                        dims[0], sds->name, file->num_lines)));
-            return; /* will never reach here */
+            elog(WARNING, 
+                 "SDS %s in file %s with %d lines is incompatible with others (%d), skipping file",
+                 sds->name, file->filename, dims[0], file->num_lines);
+            MemoryContextSwitchTo(oldmemcxt);
+            hdf_file_close(file);
+            return false;
         }
         if (file->num_samples == -1)
         {
@@ -1302,11 +1204,12 @@ open_hdf_file(HvaultExecState const *scan,
         } 
         else if (dims[1] != file->num_samples)
         {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Incompatible datasets in table"),
-                errhint("Number of samples (%d) in sds %s differs from %d",
-                        dims[1], sds->name, file->num_samples)));
-            return; /* will never reach here */
+            elog(WARNING, 
+                 "SDS %s in file %s with %d samples is incompatible with others (%d), skipping file",
+                 sds->name, file->filename, dims[1], file->num_samples);
+            MemoryContextSwitchTo(oldmemcxt);
+            hdf_file_close(file);
+            return false;
         }
         /* Get scale, offset & fill */
         sds->fill_val = palloc(hdf_sizeof(sds->type));
@@ -1325,11 +1228,13 @@ open_hdf_file(HvaultExecState const *scan,
 
     if (file->num_lines < 0 || file->num_samples < 0)
     {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't get number of lines and samples")));
-        return; /* will never reach here */
+        elog(WARNING, "Can't get number of lines and samples");
+        MemoryContextSwitchTo(oldmemcxt);
+        hdf_file_close(file);
+        return false;
     }
     /* Allocate footprint buffers */
+    /* TODO: check that allocation is OK */
     if (scan->has_footprint)
     {
         size_t bufsize = (file->num_samples + 1);
@@ -1351,6 +1256,8 @@ open_hdf_file(HvaultExecState const *scan,
                                file->num_samples);
         }
     }
+    MemoryContextSwitchTo(oldmemcxt);
+    return true;
 }
 
 static void 
@@ -1486,4 +1393,163 @@ fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum)
     ret = gserialized_from_lwgeom(geom, true, NULL);
     scan->nulls[attnum] = false;
     scan->values[attnum] = PointerGetDatum(ret);   
+}
+
+static double 
+get_num_files(HvaultPlanState *fdw_private)
+{
+    StringInfo query_str;
+    Datum val;
+    int64_t num_files;
+    bool isnull;
+
+    if (!fdw_private->catalog)
+    {
+        /* Single file mode */
+        return 1;
+    }
+
+    if (SPI_connect() != SPI_OK_CONNECT)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                     errmsg("Can't connect to SPI")));
+        return 0; /* Will never reach this */
+    }
+
+    query_str = makeStringInfo();
+    /* Add constraints */
+    appendStringInfo(query_str, "SELECT COUNT(*) FROM %s", 
+                     fdw_private->catalog);
+    if (SPI_execute(query_str->data, true, 1) != SPI_OK_SELECT || 
+        SPI_processed != 1)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't get number of rows in catalog %s", 
+                               fdw_private->catalog)));
+        return 0; /* Will never reach this */      
+    }
+    pfree(query_str->data);
+    pfree(query_str);
+    if (SPI_tuptable->tupdesc->natts != 1 ||
+        SPI_tuptable->tupdesc->attrs[0]->atttypid != INT8OID)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't get number of rows in catalog %s", 
+                               fdw_private->catalog)));
+        return 0; /* Will never reach this */         
+    }
+    val = heap_getattr(SPI_tuptable->vals[0], 1, 
+                       SPI_tuptable->tupdesc, &isnull);
+    if (isnull)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't get number of rows in catalog %s", 
+                               fdw_private->catalog)));
+        return 0; /* Will never reach this */            
+    }
+    num_files = DatumGetInt64(val);
+    if (SPI_finish() != SPI_OK_FINISH)    
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't finish access to SPI")));
+        return 0; /* Will never reach this */   
+    }
+    return num_files;
+}
+
+static bool
+fetch_next_file(HvaultExecState *scan)
+{
+    Portal file_cursor;
+    if (scan->file_cursor_name == NULL)
+    {
+        /* Initialize cursor */
+        StringInfo query_str;
+        SPIPlanPtr prepared_stmt;
+            
+        Assert(scan->catalog);
+        if (SPI_connect() != SPI_OK_CONNECT)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Can't connect to SPI")));
+            return false; /* Will never reach this */
+        }
+
+        query_str = makeStringInfo();
+        appendStringInfo(query_str, 
+                         "SELECT file_id, filename, filetime FROM %s",
+                         scan->catalog);
+        prepared_stmt = SPI_prepare(query_str->data, 0, NULL);
+        if (!prepared_stmt)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Can't prepare query for catalog %s", 
+                                   scan->catalog)));
+            return false; /* Will never reach this */
+        }
+        file_cursor = SPI_cursor_open(NULL, prepared_stmt, NULL, NULL, true);
+        scan->file_cursor_name = file_cursor->name;
+
+
+        if (SPI_finish() != SPI_OK_FINISH)    
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Can't finish access to SPI")));
+            return false; /* Will never reach this */   
+        }
+    } 
+    else 
+    {
+        /* Close previous file */
+        hdf_file_close(&scan->file);
+    }
+    
+    file_cursor = SPI_cursor_find(scan->file_cursor_name);
+    Assert(file_cursor);
+    do 
+    {
+        Datum val;
+        bool isnull;
+        char *filename;
+
+        SPI_cursor_fetch(file_cursor, true, 1);
+        if (SPI_processed != 1 || SPI_tuptable == NULL)
+        {
+            /* Can't fetch more files */
+            return false;
+        }
+
+        if (SPI_tuptable->tupdesc->natts != 3 ||
+            SPI_tuptable->tupdesc->attrs[0]->atttypid != INT4OID ||
+            SPI_tuptable->tupdesc->attrs[1]->atttypid != TEXTOID ||
+            SPI_tuptable->tupdesc->attrs[2]->atttypid != TIMESTAMPOID)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Error in catalog query")));
+            return false; /* Will never reach this */         
+        }
+
+        val = heap_getattr(SPI_tuptable->vals[0], 1, 
+                           SPI_tuptable->tupdesc, &isnull);
+        if (isnull)
+        {
+            elog(WARNING, "Wrong entry in catalog, skipping");
+            continue;
+        }
+        scan->cur_file = DatumGetInt32(val);
+        filename = SPI_getvalue(SPI_tuptable->vals[0], 
+                                SPI_tuptable->tupdesc, 2);
+        if (!filename)
+        {
+            elog(WARNING, "Wrong entry in catalog, skipping");
+            continue;
+        }
+        val = heap_getattr(SPI_tuptable->vals[0], 3, 
+                           SPI_tuptable->tupdesc, &isnull);
+        scan->file_time = DatumGetTimestamp(val);
+
+        hdf_file_open(scan, filename, &scan->file);
+    }
+    while(scan->file.sd_id == -1);
+    return true;
 }

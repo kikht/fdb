@@ -9,7 +9,7 @@ hvault: hvault.so
 hvault.so: hvault.o
 	gcc $(CFLAGS) -shared -Wl,-soname,hvault.so -o hvault.so hvault.o $(LIB)
 
-hvault.o: hvault.c
+hvault.o: hvault.c hvault.h
 	gcc $(CFLAGS) $(INC) -o hvault.o -c hvault.c
 
 clean:
