@@ -53,6 +53,7 @@ typedef enum HvaultColumnType
 typedef struct
 {
     List *coltypes; /* list of HvaultColumnType as int */
+    char *catalog; /* name of catalog table */
 } HvaultPlanState;
 
 typedef struct 
@@ -121,28 +122,25 @@ hvaultGetPlan(PlannerInfo *root,
               ForeignPath *best_path,
               List *tlist, 
               List *scan_clauses);
+static void hvaultExplain(ForeignScanState *node, ExplainState *es);
+static void hvaultBegin(ForeignScanState *node, int eflags);
+static TupleTableSlot *hvaultIterate(ForeignScanState *node);
+static void hvaultReScan(ForeignScanState *node);
+static void hvaultEnd(ForeignScanState *node);
 /*
 static bool 
 hvaultAnalyze(Relation relation, 
               AcquireSampleRowsFunc *func,
               BlockNumber *totalpages );
 */
-static void hvaultExplain(ForeignScanState *node, ExplainState *es);
-static void hvaultBegin(ForeignScanState *node, int eflags);
-static TupleTableSlot *hvaultIterate(ForeignScanState *node);
-static void hvaultReScan(ForeignScanState *node);
-static void hvaultEnd(ForeignScanState *node);
 
-static HvaultColumnType parse_column_type(char *type);
-static List *get_column_types(RelOptInfo *baserel, Oid foreigntableid);
-static int get_row_width(HvaultPlanState *fdw_private);
-static List *get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel);
-static void check_column_types(List *coltypes, TupleDesc tupdesc);
-static char *get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc);
-static HvaultSDSBuffer *get_sds_buffer(List **buffers, char *name);
-static size_t get_sizeof_hdf_type(int32_t type);
-static double hdf2double(int32_t type, void *buffer, size_t offset);
-static bool hdf_cmp(int32_t type, void *buffer, size_t offset, void *val);
+/*
+ * Footprint interpolation routines
+ */
+static inline float interpolate_point(float p1, float p2, float p3, float p4);
+static inline float extrapolate_point(float n1, float n2, float p1, float p2);
+static inline float extrapolate_corner_point(float c, float l, 
+                                             float u, float lu);
 static void extrapolate_line(size_t m, 
                              float const *p, 
                              float const *n, 
@@ -151,15 +149,42 @@ static void interpolate_line(size_t m,
                              float const *p, 
                              float const *n, 
                              float *r);
+static void calc_next_footprint(HvaultExecState const *scan, 
+                                HvaultHDFFile *file);
+/*
+ * HDF utils
+ */
+static size_t hdf_sizeof(int32_t type);
+static double hdf_value (int32_t type, void *buffer, size_t offset);
+static bool   hdf_cmp   (int32_t type, void *buffer, size_t offset, void *val);
+
+/*
+ * Options routines 
+ */
+static HvaultColumnType parse_column_type(char *type);
+static List *get_column_types(RelOptInfo *baserel, Oid foreigntableid);
+static void  check_column_types(List *coltypes, TupleDesc tupdesc);
+static char *get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc);
+static int   get_row_width(HvaultPlanState *fdw_private);
+static char * get_table_option(Oid foreigntableoid, char *option);
+
+/* 
+ * Tuple fill utilities
+ */
+static void fill_float_val(HvaultExecState const *scan, AttrNumber attnum);
+static void fill_point_val(HvaultExecState const *scan, AttrNumber attnum);
+static void fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum);
+
+
+static List *get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel);
+static HvaultSDSBuffer *get_sds_buffer(List **buffers, char *name);
 static void open_hdf_file(HvaultExecState const *scan,
                           char const *filename,
                           HvaultHDFFile *file);
 static void fetch_next_line(HvaultExecState *scan);
-static void calc_next_footprint(HvaultExecState const *scan, 
-                                HvaultHDFFile *file);
-static void fill_float_val(HvaultExecState const *scan, AttrNumber attnum);
-static void fill_point_val(HvaultExecState const *scan, AttrNumber attnum);
-static void fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum);
+
+
+
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
  * to my callback routines.
@@ -215,6 +240,7 @@ hvaultGetRelSize(PlannerInfo *root,
      *
      * Don't forget about equivalence classes!
      */    
+
 
     fdw_private->coltypes = get_column_types(baserel, foreigntableid);
     baserel->width = get_row_width(fdw_private);
@@ -284,7 +310,6 @@ hvaultGetPlan(PlannerInfo *root,
               List *tlist, 
               List *scan_clauses)
 {
-
     List *fdw_path_private = best_path->fdw_private; 
     List *rest_clauses; /* clauses that must be checked externally */
     /* Both of these lists must be represented in a form that 
@@ -333,7 +358,6 @@ hvaultBegin(ForeignScanState *node, int eflags)
     ListCell *l;
     AttrNumber attnum;
     MemoryContext scan_cxt, oldmemcxt;
-    ForeignTable *foreigntable;
 
 
     elog(DEBUG1, "in hvaultBegin");
@@ -410,21 +434,9 @@ hvaultBegin(ForeignScanState *node, int eflags)
     }
     elog(DEBUG1, "SDS buffers: %d", list_length(fdw_exec_state->file.sds));
 
-    fdw_exec_state->file.filename = NULL;
-    foreigntable = GetForeignTable(foreigntableoid);
-    foreach(l, foreigntable->options)
-    {
-        DefElem *def = (DefElem *) lfirst(l);
-        if (strcmp(def->defname, "filename") == 0)
-        {
-            fdw_exec_state->file.filename = defGetString(def);
-        }
-    }
-    if (!fdw_exec_state->file.filename) 
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("No source filename")));
-    }
+    fdw_exec_state->file.filename = get_table_option(foreigntableoid, 
+                                                     "filename");
+    Assert(fdw_exec_state->file.filename);
 
     MemoryContextSwitchTo(oldmemcxt);
     node->fdw_state = fdw_exec_state;
@@ -528,7 +540,6 @@ hvaultIterate(ForeignScanState *node)
     return slot;
 }
 
-
 static void 
 hvaultReScan(ForeignScanState *node)
 {
@@ -578,6 +589,63 @@ hvaultEnd(ForeignScanState *node)
     MemoryContextDelete(scan_ctx);
 }
 
+
+
+
+
+
+
+
+static char * 
+get_table_option(Oid foreigntableoid, char *option)
+{
+    ListCell *l;
+    ForeignTable *foreigntable = GetForeignTable(foreigntableoid);
+    foreach(l, foreigntable->options)
+    {
+        DefElem *def = (DefElem *) lfirst(l);
+        if (strcmp(def->defname, option) == 0)
+        {
+            return defGetString(def);
+        }
+    }
+    ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                    errmsg("Can't find table option %s", option)));
+    return NULL; /* Will never reach here */
+}
+
+
+static HvaultColumnType
+parse_column_type(char *type) 
+{
+    if (strcmp(type, "point") == 0) 
+    {
+        return HvaultColumnPoint;
+    }
+    else if (strcmp(type, "footprint") == 0)
+    {
+        return HvaultColumnFootprint;   
+    }
+    else if (strcmp(type, "file_index") == 0)
+    {
+        return HvaultColumnFileIdx;
+    }
+    else if (strcmp(type, "line_index") == 0)
+    {
+        return HvaultColumnLineIdx;
+    }
+    else if (strcmp(type, "sample_index") == 0)
+    {
+        return HvaultColumnSampleIdx;
+    }
+    else if (strcmp(type, "time") == 0)
+    {
+        return HvaultColumnTime;
+    }
+    ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+            errmsg("Unknown column type %s", type)));
+    return HvaultColumnNull; /* will never reach here */
+}
 
 static List *
 get_column_types(RelOptInfo *baserel, Oid foreigntableid)
@@ -645,36 +713,26 @@ get_column_types(RelOptInfo *baserel, Oid foreigntableid)
     return res;
 }
 
-static HvaultColumnType
-parse_column_type(char *type) 
+static char *
+get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc)
 {
-    if (strcmp(type, "point") == 0) 
+    List *options;
+    ListCell *o;
+
+    Assert(attnum < tupdesc->natts);
+    options = GetForeignColumnOptions(relid, attnum+1);
+    elog(DEBUG1, "options for att %d: %s", attnum, nodeToString(options));
+    foreach(o, options)
     {
-        return HvaultColumnPoint;
+        DefElem *def = (DefElem *) lfirst(o);
+        if (strcmp(def->defname, "sds") == 0) {
+            return defGetString(def);
+        }
     }
-    else if (strcmp(type, "footprint") == 0)
-    {
-        return HvaultColumnFootprint;   
-    }
-    else if (strcmp(type, "file_index") == 0)
-    {
-        return HvaultColumnFileIdx;
-    }
-    else if (strcmp(type, "line_index") == 0)
-    {
-        return HvaultColumnLineIdx;
-    }
-    else if (strcmp(type, "sample_index") == 0)
-    {
-        return HvaultColumnSampleIdx;
-    }
-    else if (strcmp(type, "time") == 0)
-    {
-        return HvaultColumnTime;
-    }
-    ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-            errmsg("Unknown column type %s", type)));
-    return HvaultColumnNull; /* will never reach here */
+
+    elog(DEBUG1, "Can't find sds option for att: %d relid: %d opts: %s", 
+         attnum, relid, nodeToString(options));
+    return NameStr(tupdesc->attrs[attnum]->attname);;
 }
 
 static int
@@ -708,6 +766,69 @@ get_row_width(HvaultPlanState *fdw_private)
         }
     }
     return width;
+}
+
+static void
+check_column_types(List *coltypes, TupleDesc tupdesc)
+{
+    ListCell *l;
+    AttrNumber attnum = 0;
+    Oid geomtypeoid = TypenameGetTypid("geometry");
+    if (geomtypeoid == InvalidOid) 
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't find geometry type"),
+                        errhint("PostGIS must be installed to use Hvault")));
+    }
+
+    elog(DEBUG1, "check_column_types: coltypes: %s", nodeToString(coltypes));
+
+    Assert(list_length(coltypes) == tupdesc->natts);
+    foreach(l, coltypes)
+    {
+        switch(lfirst_int(l))
+        {
+            case HvaultColumnFloatVal:
+                if (tupdesc->attrs[attnum]->atttypid != FLOAT8OID)
+                    ereport(ERROR, 
+                            (errcode(ERRCODE_FDW_ERROR),
+                             errmsg("Invalid column type %d", attnum),
+                             errhint("SDS column must have float8 type")));
+                break;
+            case HvaultColumnPoint:
+            case HvaultColumnFootprint:
+                if (tupdesc->attrs[attnum]->atttypid != geomtypeoid)
+                    ereport(ERROR, 
+                            (errcode(ERRCODE_FDW_ERROR),
+                             errmsg("Invalid column type %d", attnum),
+                             errhint(
+                        "Point & footprint columns must have geometry type")));
+                break;
+            case HvaultColumnFileIdx:
+            case HvaultColumnLineIdx:
+            case HvaultColumnSampleIdx:
+                if (tupdesc->attrs[attnum]->atttypid != INT4OID)
+                    ereport(ERROR, 
+                            (errcode(ERRCODE_FDW_ERROR),
+                             errmsg("Invalid column type %d", attnum),
+                             errhint("Index column must have int4 type")));
+                break;
+            case HvaultColumnTime:
+                if (tupdesc->attrs[attnum]->atttypid != TIMESTAMPTZOID)
+                    ereport(ERROR, 
+                            (errcode(ERRCODE_FDW_ERROR),
+                             errmsg("Invalid column type %d", attnum),
+                             errhint("Time column must have timestamp type")));
+                break;
+            case HvaultColumnNull:
+                /* nop */
+                break;
+            default:
+                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                                errmsg("Undefined column type")));
+        }
+        attnum++;
+    }
 }
 
 static List *
@@ -818,91 +939,6 @@ get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel)
     return pathkeys;
 }
 
-static void
-check_column_types(List *coltypes, TupleDesc tupdesc)
-{
-    ListCell *l;
-    AttrNumber attnum = 0;
-    Oid geomtypeoid = TypenameGetTypid("geometry");
-    if (geomtypeoid == InvalidOid) 
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't find geometry type"),
-                        errhint("PostGIS must be installed to use Hvault")));
-    }
-
-    elog(DEBUG1, "check_column_types: coltypes: %s", nodeToString(coltypes));
-
-    Assert(list_length(coltypes) == tupdesc->natts);
-    foreach(l, coltypes)
-    {
-        switch(lfirst_int(l))
-        {
-            case HvaultColumnFloatVal:
-                if (tupdesc->attrs[attnum]->atttypid != FLOAT8OID)
-                    ereport(ERROR, 
-                            (errcode(ERRCODE_FDW_ERROR),
-                             errmsg("Invalid column type %d", attnum),
-                             errhint("SDS column must have float8 type")));
-                break;
-            case HvaultColumnPoint:
-            case HvaultColumnFootprint:
-                if (tupdesc->attrs[attnum]->atttypid != geomtypeoid)
-                    ereport(ERROR, 
-                            (errcode(ERRCODE_FDW_ERROR),
-                             errmsg("Invalid column type %d", attnum),
-                             errhint(
-                        "Point & footprint columns must have geometry type")));
-                break;
-            case HvaultColumnFileIdx:
-            case HvaultColumnLineIdx:
-            case HvaultColumnSampleIdx:
-                if (tupdesc->attrs[attnum]->atttypid != INT4OID)
-                    ereport(ERROR, 
-                            (errcode(ERRCODE_FDW_ERROR),
-                             errmsg("Invalid column type %d", attnum),
-                             errhint("Index column must have int4 type")));
-                break;
-            case HvaultColumnTime:
-                if (tupdesc->attrs[attnum]->atttypid != TIMESTAMPTZOID)
-                    ereport(ERROR, 
-                            (errcode(ERRCODE_FDW_ERROR),
-                             errmsg("Invalid column type %d", attnum),
-                             errhint("Time column must have timestamp type")));
-                break;
-            case HvaultColumnNull:
-                /* nop */
-                break;
-            default:
-                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                                errmsg("Undefined column type")));
-        }
-        attnum++;
-    }
-}
-
-static char *
-get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc)
-{
-    List *options;
-    ListCell *o;
-
-    Assert(attnum < tupdesc->natts);
-    options = GetForeignColumnOptions(relid, attnum+1);
-    elog(DEBUG1, "options for att %d: %s", attnum, nodeToString(options));
-    foreach(o, options)
-    {
-        DefElem *def = (DefElem *) lfirst(o);
-        if (strcmp(def->defname, "sds") == 0) {
-            return defGetString(def);
-        }
-    }
-
-    elog(DEBUG1, "Can't find sds option for att: %d relid: %d opts: %s", 
-         attnum, relid, nodeToString(options));
-    return NameStr(tupdesc->attrs[attnum]->attname);;
-}
-
 static HvaultSDSBuffer *
 get_sds_buffer(List **buffers, char *name)
 {
@@ -931,7 +967,7 @@ get_sds_buffer(List **buffers, char *name)
 }
 
 static size_t
-get_sizeof_hdf_type(int32_t type)
+hdf_sizeof(int32_t type)
 {
     switch(type)
     {
@@ -959,7 +995,7 @@ get_sizeof_hdf_type(int32_t type)
 }
 
 static double 
-hdf2double(int32_t type, void *buffer, size_t offset)
+hdf_value(int32_t type, void *buffer, size_t offset)
 {
     switch(type)
     {
@@ -1040,7 +1076,7 @@ hdf_cmp(int32_t type, void *buffer, size_t offset, void *val)
 static inline float 
 interpolate_point(float p1, float p2, float p3, float p4)
 {
-    return (1./4.) * (p1 + p2 + p3 + p4);
+    return ((float) 0.25) * (p1 + p2 + p3 + p4);
 }
 
 
@@ -1084,11 +1120,12 @@ extrapolate_corner_point(float c, float l, float u, float lu)
 static void
 interpolate_line(size_t m, float const *p, float const *n, float *r)
 {
+	size_t i;
     r[0] = extrapolate_point(p[0], n[0], p[1], n[1]);
     r[m] = extrapolate_point(p[m-1], n[m-1], p[m-2], n[m-2]);
-    for (--m; m > 0; --m)
+    for (i = 0; i < m-1; i++)
     {
-        r[m] = interpolate_point(p[m-1], n[m-1], p[m], n[m]);
+        r[i+1] = interpolate_point(p[i], n[i], p[i+1], n[i+1]);
     }
 }
 
@@ -1106,12 +1143,80 @@ interpolate_line(size_t m, float const *p, float const *n, float *r)
 static void
 extrapolate_line(size_t m, float const *p, float const *n, float *r)
 {
+	size_t i;
     r[0] = extrapolate_corner_point(n[0], p[0], n[1], p[1]);
     r[m] = extrapolate_corner_point(n[m-1], p[m-1], n[m-2], p[m-2]);
-    for (--m; m > 0; --m)
+    for (i = 0; i < m-1; i++)
     {
-        r[m] = extrapolate_point(n[m-1], n[m], p[m-1], p[m]);
+        r[i+1] = extrapolate_point(n[i], n[i+1], p[i], p[i+1]);
     }   
+}
+
+static void 
+calc_next_footprint(HvaultExecState const *scan, HvaultHDFFile *file)
+{
+    int scan_line;
+    Assert(scan->lat != NULL);
+    Assert(scan->lon != NULL);
+    Assert(scan->lat->type == DFNT_FLOAT32);
+    Assert(scan->lon->type == DFNT_FLOAT32);
+    /*
+     * Three possibilities:
+     * 1. first line in scan -> extrapolate prev, interpolate next
+     * 2. last line in scan  -> reuse prev,       extrapolate next
+     * 3. casual line        -> reuse prev,       interpolate next
+     */
+    scan_line = scan->cur_line % scan->scan_size;
+    if (scan_line == 0)
+    {
+        /* extrapolate prev */
+        extrapolate_line(file->num_samples, 
+                         (float *) scan->lat->next, 
+                         (float *) scan->lat->cur, 
+                         file->prevbrdlat);
+        extrapolate_line(file->num_samples, 
+                         (float *) scan->lon->next, 
+                         (float *) scan->lon->cur, 
+                         file->prevbrdlon);
+    }
+    else 
+    {
+        /* reuse prev */
+        float *buf;
+        
+        buf = file->prevbrdlat;
+        file->prevbrdlat = file->nextbrdlat;
+        file->nextbrdlat = buf;
+
+        buf = file->prevbrdlon;
+        file->prevbrdlon = file->nextbrdlon;
+        file->nextbrdlon = buf;
+    }
+
+    if (scan_line == scan->scan_size - 1)
+    {
+        /* extrapolate next */
+        extrapolate_line(file->num_samples, 
+                         (float *) scan->lat->prev, 
+                         (float *) scan->lat->cur, 
+                         file->nextbrdlat);
+        extrapolate_line(file->num_samples, 
+                         (float *) scan->lon->prev, 
+                         (float *) scan->lon->cur, 
+                         file->nextbrdlon);
+    }
+    else 
+    {
+        /* interpolate next */
+        interpolate_line(file->num_samples, 
+                         (float *) scan->lat->cur,
+                         (float *) scan->lat->next, 
+                         file->nextbrdlat);
+        interpolate_line(file->num_samples, 
+                         (float *) scan->lon->cur,
+                         (float *) scan->lon->next, 
+                         file->nextbrdlon);
+    }
 }
 
 static void
@@ -1204,7 +1309,7 @@ open_hdf_file(HvaultExecState const *scan,
             return; /* will never reach here */
         }
         /* Get scale, offset & fill */
-        sds->fill_val = palloc(get_sizeof_hdf_type(sds->type));
+        sds->fill_val = palloc(hdf_sizeof(sds->type));
         if (SDgetfillvalue(sds->id, sds->fill_val) != SUCCEED)
         {
             pfree(sds->fill_val);
@@ -1237,12 +1342,12 @@ open_hdf_file(HvaultExecState const *scan,
     foreach(l, file->sds)
     {
         HvaultSDSBuffer *sds = (HvaultSDSBuffer *) lfirst(l);
-        sds->cur = palloc(get_sizeof_hdf_type(sds->type) * file->num_samples);
+        sds->cur = palloc(hdf_sizeof(sds->type) * file->num_samples);
         if (sds->haswindow)
         {
-            sds->next = palloc(get_sizeof_hdf_type(sds->type) *
+            sds->next = palloc(hdf_sizeof(sds->type) *
                                file->num_samples);
-            sds->prev = palloc(get_sizeof_hdf_type(sds->type) *
+            sds->prev = palloc(hdf_sizeof(sds->type) *
                                file->num_samples);
         }
     }
@@ -1312,73 +1417,6 @@ fetch_next_line(HvaultExecState *scan)
     }
 }
 
-static void 
-calc_next_footprint(HvaultExecState const *scan, HvaultHDFFile *file)
-{
-    int scan_line;
-    Assert(scan->lat != NULL);
-    Assert(scan->lon != NULL);
-    Assert(scan->lat->type == DFNT_FLOAT32);
-    Assert(scan->lon->type == DFNT_FLOAT32);
-    /*
-     * Three possibilities:
-     * 1. first line in scan -> extrapolate prev, interpolate next
-     * 2. last line in scan  -> reuse prev,       extrapolate next
-     * 3. casual line        -> reuse prev,       interpolate next
-     */
-    scan_line = scan->cur_line % scan->scan_size;
-    if (scan_line == 0)
-    {
-        /* extrapolate prev */
-        extrapolate_line(file->num_samples, 
-                         (float *) scan->lat->next, 
-                         (float *) scan->lat->cur, 
-                         file->prevbrdlat);
-        extrapolate_line(file->num_samples, 
-                         (float *) scan->lon->next, 
-                         (float *) scan->lon->cur, 
-                         file->prevbrdlon);
-    }
-    else 
-    {
-        /* reuse prev */
-        float *buf;
-        
-        buf = file->prevbrdlat;
-        file->prevbrdlat = file->nextbrdlat;
-        file->nextbrdlat = buf;
-
-        buf = file->prevbrdlon;
-        file->prevbrdlon = file->nextbrdlon;
-        file->nextbrdlon = buf;
-    }
-
-    if (scan_line == scan->scan_size - 1)
-    {
-        /* extrapolate next */
-        extrapolate_line(file->num_samples, 
-                         (float *) scan->lat->prev, 
-                         (float *) scan->lat->cur, 
-                         file->nextbrdlat);
-        extrapolate_line(file->num_samples, 
-                         (float *) scan->lon->prev, 
-                         (float *) scan->lon->cur, 
-                         file->nextbrdlon);
-    }
-    else 
-    {
-        /* interpolate next */
-        interpolate_line(file->num_samples, 
-                         (float *) scan->lat->cur,
-                         (float *) scan->lat->next, 
-                         file->nextbrdlat);
-        interpolate_line(file->num_samples, 
-                         (float *) scan->lon->cur,
-                         (float *) scan->lon->next, 
-                         file->nextbrdlon);
-    }
-}
-
 static void
 fill_float_val(HvaultExecState const *scan, AttrNumber attnum)
 {
@@ -1392,7 +1430,7 @@ fill_float_val(HvaultExecState const *scan, AttrNumber attnum)
     {
         scan->nulls[attnum] = false;
         scan->values[attnum] = Float8GetDatum(
-            hdf2double(sds->type, sds->cur, scan->cur_sample) / sds->scale - 
+            hdf_value(sds->type, sds->cur, scan->cur_sample) / sds->scale - 
             sds->offset);
     }
 }
@@ -1404,8 +1442,8 @@ fill_point_val(HvaultExecState const *scan, AttrNumber attnum)
     LWGEOM *geom;
     GSERIALIZED *ret;
     point = lwpoint_make2d(SRID_UNKNOWN, 
-        hdf2double(scan->lat->type, scan->lat->cur, scan->cur_sample),
-        hdf2double(scan->lon->type, scan->lon->cur, scan->cur_sample));
+        hdf_value(scan->lat->type, scan->lat->cur, scan->cur_sample),
+        hdf_value(scan->lon->type, scan->lon->cur, scan->cur_sample));
     geom = lwpoint_as_lwgeom( point );
     ret = gserialized_from_lwgeom(geom, true, NULL);
     scan->nulls[attnum] = false;
@@ -1449,58 +1487,3 @@ fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum)
     scan->nulls[attnum] = false;
     scan->values[attnum] = PointerGetDatum(ret);   
 }
-
-/*
-    if (fdw_exec_state->row_num < 10)
-    {
-        slot->tts_values = fdw_exec_state->values;
-        slot->tts_isnull = fdw_exec_state->nulls;
-        for(col = 0; col < tupdesc->natts; ++col) 
-        {
-            Oid typeoid = tupdesc->attrs[col]->atttypid;
-            StringInfo str;
-
-            slot->tts_isnull[col] = false;
-            if (typeoid == fdw_exec_state->geomtypeoid)
-            {
-                LWPOINT *lwPoint;
-                LWGEOM *geom;
-                GSERIALIZED *ret;
-                lwPoint = lwpoint_make2d(SRID_UNKNOWN, 
-                                         fdw_exec_state->row_num, 
-                                         -fdw_exec_state->row_num+1);
-                geom = lwpoint_as_lwgeom( lwPoint );
-                ret = gserialized_from_lwgeom(geom, true, NULL);
-                slot->tts_values[col] = PointerGetDatum(ret);
-            } 
-            else switch(typeoid)
-            {
-                case INT4OID:
-                    slot->tts_values[col] = 
-                        Int32GetDatum(fdw_exec_state->row_num);
-                break;
-                case TEXTOID:
-                    str = makeStringInfo();
-                    appendStringInfo(str, "string %d", fdw_exec_state->row_num);
-                    slot->tts_values[col] = PointerGetDatum(
-                        cstring_to_text_with_len(str->data, str->len));
-                break;
-                case FLOAT8OID:
-                    slot->tts_values[col] = 
-                        Float8GetDatum(1.0/fdw_exec_state->row_num);
-                break;
-                case TIMESTAMPOID:
-                    slot->tts_values[col] = Int64GetDatum(POSTGRES_EPOCH_JDATE 
-                        + fdw_exec_state->row_num*USECS_PER_DAY);
-                break;
-                default:
-                    elog(DEBUG1, "unknown type oid %d", typeoid);
-                    slot->tts_isnull[col] = true;
-                    break;
-                    
-            }
-        }
-        ExecStoreVirtualTuple(slot);
-        fdw_exec_state->row_num++;
-    } 
-*/
