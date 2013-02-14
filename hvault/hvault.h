@@ -146,7 +146,9 @@ static void   hdf_file_close(HvaultHDFFile *file);
  * Options routines 
  */
 static HvaultColumnType parse_column_type(char *type);
-static List *get_column_types(RelOptInfo *baserel, Oid foreigntableid);
+static List *get_column_types(PlannerInfo *root, 
+                              RelOptInfo *baserel, 
+                              Oid foreigntableid);
 static void  check_column_types(List *coltypes, TupleDesc tupdesc);
 static char *get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc);
 static int   get_row_width(HvaultPlanState *fdw_private);

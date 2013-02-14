@@ -8,6 +8,7 @@
 #include <executor/spi.h>
 #include <foreign/foreign.h>
 #include <nodes/bitmapset.h>
+#include <nodes/nodeFuncs.h>
 #include <optimizer/pathnode.h>
 #include <optimizer/paths.h>
 #include <optimizer/planmain.h>
@@ -85,7 +86,7 @@ hvaultGetRelSize(PlannerInfo *root,
      * Don't forget about equivalence classes!
      */    
 
-    fdw_private->coltypes = get_column_types(baserel, foreigntableid);
+    fdw_private->coltypes = get_column_types(root, baserel, foreigntableid);
     fdw_private->catalog = get_table_option(foreigntableid, "catalog");
     baserel->width = get_row_width(fdw_private);
     num_files = get_num_files(fdw_private);
@@ -241,6 +242,8 @@ hvaultBegin(ForeignScanState *node, int eflags)
     fdw_exec_state->scan_size = 10;
     fdw_exec_state->catalog = NULL;
     fdw_exec_state->file_cursor_name = NULL;
+    fdw_exec_state->cur_file = -1;
+    fdw_exec_state->file_time = 0;
 
     check_column_types(fdw_exec_state->coltypes, tupdesc);
     /* fill required sds list & helper pointers */
@@ -274,8 +277,8 @@ hvaultBegin(ForeignScanState *node, int eflags)
     }
     if (list_length(fdw_exec_state->file.sds) == 0)
     {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("No SDS columns found")));
+        /* Adding latitude column to get size of files */
+        get_sds_buffer(&(fdw_exec_state->file.sds), "Latitude");
     }
     elog(DEBUG1, "SDS buffers: %d", list_length(fdw_exec_state->file.sds));
 
@@ -303,7 +306,7 @@ hvaultIterate(ForeignScanState *node)
     ListCell *l;
     AttrNumber attnum;
 
-    elog(DEBUG2, "in hvaultIterate %d:%d:%d", 1, fdw_exec_state->cur_line, 
+    elog(DEBUG4, "in hvaultIterate %d:%d:%d", 1, fdw_exec_state->cur_line, 
                                                  fdw_exec_state->cur_sample);
 
     if (fdw_exec_state->cur_line == 0 && fdw_exec_state->cur_sample == 0)
@@ -325,8 +328,10 @@ hvaultIterate(ForeignScanState *node)
                 if (!fetch_next_file(fdw_exec_state))
                 {
                     /* End of scan, return empty tuple*/
+                    elog(DEBUG1, "End of scan: no more files");
                     return slot;
                 }
+                fdw_exec_state->cur_line = 0;
             } 
             else 
             {
@@ -390,9 +395,12 @@ hvaultIterate(ForeignScanState *node)
                 fdw_exec_state->nulls[attnum] = false;
                 break;
             case HvaultColumnTime:
-                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                                errmsg("Time column is not supported yet")));
-                return NULL; /* Will never reach here */
+                fdw_exec_state->nulls[attnum] = fdw_exec_state->file_time == 0;
+                if (!fdw_exec_state->nulls[attnum])
+                {
+                    fdw_exec_state->values[attnum] = 
+                        TimestampGetDatum(fdw_exec_state->file_time);
+                }
                 break;
             default:
                 ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
@@ -413,15 +421,26 @@ hvaultReScan(ForeignScanState *node)
 {
     HvaultExecState *fdw_exec_state = (HvaultExecState *) node->fdw_state;
     elog(DEBUG1, "in hvaultReScan");
-    
-    //TODO: cursor reinitialize
+    if (fdw_exec_state == NULL)
+        return;
 
-    fdw_exec_state->cur_line = 0;
-    fdw_exec_state->cur_sample = 0;
     if (fdw_exec_state->file.sd_id != FAIL)
     {
-        fetch_next_line(fdw_exec_state);
+        hdf_file_close(&fdw_exec_state->file);
     }
+
+    if (fdw_exec_state->file_cursor_name != NULL)
+    {
+        Portal file_cursor = SPI_cursor_find(fdw_exec_state->file_cursor_name);
+        SPI_cursor_close(file_cursor);
+    }
+
+    MemoryContextReset(fdw_exec_state->file.filememcxt);
+
+    fdw_exec_state->file_cursor_name = NULL;
+    fdw_exec_state->cur_file = -1;
+    fdw_exec_state->cur_line = -1;
+    fdw_exec_state->cur_sample = -1;
 }
 
 
@@ -504,69 +523,107 @@ parse_column_type(char *type)
     return HvaultColumnNull; /* will never reach here */
 }
 
+typedef struct 
+{
+    HvaultColumnType *types;
+    Index relid;
+    Oid foreigntableid;
+    AttrNumber natts;
+} HvaultColumnTypeWalkerContext;
+
+static bool 
+get_column_types_walker(Node *node, HvaultColumnTypeWalkerContext *cxt)
+{
+    if (node == NULL)
+        return false;
+    if (IsA(node, Var))
+    {
+        Var *var = (Var *) node;
+        if (var->varno == cxt->relid)
+        {
+            AttrNumber attnum;
+            Assert(var->varattno <= natts);
+            attnum = var->varattno-1;
+            if (cxt->types[attnum] == HvaultColumnNull)
+            {
+                List *colopts;
+                ListCell *m;
+
+                cxt->types[attnum] = HvaultColumnFloatVal;
+                colopts = GetForeignColumnOptions(cxt->foreigntableid, 
+                                                  var->varattno);
+                foreach(m, colopts)
+                {
+                    DefElem *opt = (DefElem *) lfirst(m);
+                    if (strcmp(opt->defname, "type") == 0)
+                    {
+                        char *type = defGetString(opt);
+                        cxt->types[attnum] = parse_column_type(type);
+                        elog(DEBUG1, "col: %d strtype: %s type: %d", 
+                             attnum, type, cxt->types[attnum]);
+                    }
+                }
+            }
+        }
+    }
+    return expression_tree_walker(node, get_column_types_walker, (void *) cxt);
+}
+
 static List *
-get_column_types(RelOptInfo *baserel, Oid foreigntableid)
+get_column_types(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
 {
     List *res = NIL;
     ListCell *l, *m;
     Relation rel;
-    AttrNumber attnum, natts;
+    AttrNumber attnum;
     TupleDesc tupleDesc;
-    HvaultColumnType *types;
-    /* HvaultPlanState *fdw_private = baserel->fdw_private; */
+    HvaultColumnTypeWalkerContext walker_cxt;
 
     rel = heap_open(foreigntableid, AccessShareLock);
     tupleDesc = RelationGetDescr(rel);
-    natts = tupleDesc->natts;
+    walker_cxt.natts = tupleDesc->natts;
     heap_close(rel, AccessShareLock);
 
-    types = palloc(sizeof(HvaultColumnType) * natts);
-    for (attnum = 0; attnum < natts; attnum++)
+    walker_cxt.relid = baserel->relid;
+    walker_cxt.foreigntableid = foreigntableid;
+    walker_cxt.types = palloc(sizeof(HvaultColumnType) * walker_cxt.natts);
+    for (attnum = 0; attnum < walker_cxt.natts; attnum++)
     {
-        types[attnum] = HvaultColumnNull;
+        walker_cxt.types[attnum] = HvaultColumnNull;
     }
 
-    foreach(l, baserel->reltargetlist)
+    get_column_types_walker((Node *) baserel->reltargetlist, &walker_cxt);
+    foreach(l, baserel->baserestrictinfo)
     {
-        Var *var;
-        List *colopts;
-        
-        if (!IsA(lfirst(l), Var))
-        {
-            elog(WARNING, "Strange object in reltargetlist: %s", 
-                 nodeToString(lfirst(l)));
-            continue;
-        }
-
-        var = (Var *) lfirst(l);
-        if (var->varno != baserel->relid)
-        {
-            elog(WARNING, "Not my var in reltargetlist: %s", nodeToString(var));
-            continue;
-        }
-        Assert(var->varattno <= fdw_private->natts);
-
-        types[var->varattno-1] = HvaultColumnFloatVal;
-        colopts = GetForeignColumnOptions(foreigntableid, var->varattno);
-        foreach(m, colopts)
-        {
-            DefElem *opt = (DefElem *) lfirst(m);
-            if (strcmp(opt->defname, "type") == 0)
-            {
-                char *type = defGetString(opt);
-                attnum = var->varattno-1;
-                types[attnum] = parse_column_type(type);
-                elog(DEBUG1, "col: %d strtype: %s type: %d", 
-                     attnum, type, types[attnum]);
-            }
-        }
-    }  
-
-    for (attnum = 0; attnum < natts; attnum++)
-    {
-        res = lappend_int(res, types[attnum]);
+        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+        get_column_types_walker((Node *) rinfo->clause, &walker_cxt);
     }
-    pfree(types);
+
+    foreach(l, baserel->joininfo)
+    {
+        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+        get_column_types_walker((Node *) rinfo->clause, &walker_cxt);
+    }
+
+    foreach(l, root->eq_classes)
+    {
+        EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
+        if (!bms_is_member(baserel->relid, ec->ec_relids))
+        {
+            continue;
+        }
+        foreach(m, ec->ec_members)
+        {
+            EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
+            get_column_types_walker((Node *) em->em_expr, &walker_cxt);
+        }
+    }
+
+    for (attnum = 0; attnum < walker_cxt.natts; attnum++)
+    {
+        res = lappend_int(res, walker_cxt.types[attnum]);
+    }
+    pfree(walker_cxt.types);
     return res;
 }
 
@@ -614,6 +671,8 @@ get_row_width(HvaultPlanState *fdw_private)
             case HvaultColumnFootprint:
                 width += FOOTPRINT_SIZE;
                 break;
+            case HvaultColumnTime:
+                width += 8;
             case HvaultColumnNull:
                 /* nop */
                 break;
@@ -1461,24 +1520,28 @@ static bool
 fetch_next_file(HvaultExecState *scan)
 {
     Portal file_cursor;
+    bool retval = false;
+
+    elog(DEBUG1, "fetching next file");
+    if (SPI_connect() != SPI_OK_CONNECT)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't connect to SPI")));
+        return false; /* Will never reach this */
+    }
+
     if (scan->file_cursor_name == NULL)
     {
+        elog(DEBUG1, "file cursor initialization");
         /* Initialize cursor */
         StringInfo query_str;
         SPIPlanPtr prepared_stmt;
             
         Assert(scan->catalog);
-        if (SPI_connect() != SPI_OK_CONNECT)
-        {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Can't connect to SPI")));
-            return false; /* Will never reach this */
-        }
-
         query_str = makeStringInfo();
         appendStringInfo(query_str, 
-                         "SELECT file_id, filename, filetime FROM %s",
-                         scan->catalog);
+            "SELECT file_id, filename, filetime FROM %s ORDER BY file_id",
+            scan->catalog);
         prepared_stmt = SPI_prepare(query_str->data, 0, NULL);
         if (!prepared_stmt)
         {
@@ -1489,14 +1552,6 @@ fetch_next_file(HvaultExecState *scan)
         }
         file_cursor = SPI_cursor_open(NULL, prepared_stmt, NULL, NULL, true);
         scan->file_cursor_name = file_cursor->name;
-
-
-        if (SPI_finish() != SPI_OK_FINISH)    
-        {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Can't finish access to SPI")));
-            return false; /* Will never reach this */   
-        }
     } 
     else 
     {
@@ -1516,8 +1571,9 @@ fetch_next_file(HvaultExecState *scan)
         if (SPI_processed != 1 || SPI_tuptable == NULL)
         {
             /* Can't fetch more files */
-            return false;
-        }
+            elog(DEBUG1, "No more files");
+            break;
+        }   
 
         if (SPI_tuptable->tupdesc->natts != 3 ||
             SPI_tuptable->tupdesc->attrs[0]->atttypid != INT4OID ||
@@ -1546,10 +1602,18 @@ fetch_next_file(HvaultExecState *scan)
         }
         val = heap_getattr(SPI_tuptable->vals[0], 3, 
                            SPI_tuptable->tupdesc, &isnull);
-        scan->file_time = DatumGetTimestamp(val);
+        scan->file_time = isnull ? 0 : DatumGetTimestamp(val);
 
-        hdf_file_open(scan, filename, &scan->file);
+        retval = hdf_file_open(scan, filename, &scan->file);
     }
-    while(scan->file.sd_id == -1);
-    return true;
+    while(retval == false);
+
+    if (SPI_finish() != SPI_OK_FINISH)    
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't finish access to SPI")));
+        return false; /* Will never reach this */   
+    }
+
+    return retval;
 }
