@@ -1,3 +1,4 @@
+/* PostgreSQL */
 #include <postgres.h>
 #include <access/attnum.h>
 #include <commands/explain.h>
@@ -5,12 +6,15 @@
 #include <funcapi.h>
 #include <nodes/pg_list.h>
 
+/* PostGIS */
+#include <liblwgeom.h>
+
 #define TUPLES_PER_FILE (double)(2030*1354)
 /* 4 (size) + 3 (srid) + 1 (flags) + 4 (type) + 4 (num points) + 2 * 8 (coord)*/
 #define POINT_SIZE 32
 /* 4 (size) + 3 (srid) + 1 (flags) + 4 * 4 (bbox) + 4 (type) + 4 (num rings)
  * +  4 (num points) + 5 * 2 * 8 (coords) */
-#define FOOTPRINT_SIZE 116
+#define FOOTPRINT_SIZE 120
 
 typedef enum HvaultColumnType
 {
@@ -52,6 +56,7 @@ typedef struct
 
     int32_t sd_id;
     int num_samples, num_lines;
+    clock_t open_time;
 } HvaultHDFFile;
 
 /*
@@ -75,6 +80,11 @@ typedef struct
     Timestamp file_time;
     int scan_size;
     bool has_footprint;
+
+    double *sds_vals;
+    LWPOINT *point;
+    POINTARRAY *ptarray;
+    LWPOLY *poly;
 } HvaultExecState;
 
 

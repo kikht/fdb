@@ -1,5 +1,7 @@
 #include "hvault.h"
 
+#include <time.h>
+
 /* PostgreSQL */
 #include <access/skey.h>
 #include <catalog/namespace.h>
@@ -17,9 +19,6 @@
 #include <utils/memutils.h>
 #include <utils/rel.h>
 #include <utils/timestamp.h>
-
-/* PostGIS */
-#include <liblwgeom.h>
 
 /* HDF */
 #include <hdf/mfhdf.h>
@@ -121,7 +120,7 @@ hvaultGetPaths(PlannerInfo *root,
     rows = baserel->rows;
     startup_cost = 10;
     /* TODO: files * lines_per_file * line_cost(num_sds, has_footprint) */
-    total_cost = rows * 5; 
+    total_cost = rows * 0.001; 
     if (has_useful_pathkeys(root, baserel))
     {
         /* TODO: time sort */
@@ -245,6 +244,13 @@ hvaultBegin(ForeignScanState *node, int eflags)
     fdw_exec_state->cur_file = -1;
     fdw_exec_state->file_time = 0;
 
+    fdw_exec_state->sds_vals = palloc(sizeof(double) * fdw_exec_state->natts);
+    fdw_exec_state->point = lwpoint_make2d(SRID_UNKNOWN, 0, 0);
+    fdw_exec_state->ptarray = ptarray_construct(false, false, 5);
+    fdw_exec_state->poly = lwpoly_construct(SRID_UNKNOWN, NULL, 1, 
+                                            &fdw_exec_state->ptarray);
+    lwgeom_add_bbox(lwpoly_as_lwgeom(fdw_exec_state->poly));
+
     check_column_types(fdw_exec_state->coltypes, tupdesc);
     /* fill required sds list & helper pointers */
     fdw_exec_state->file.sds = NIL;
@@ -305,9 +311,6 @@ hvaultIterate(ForeignScanState *node)
     HvaultExecState *fdw_exec_state = (HvaultExecState *) node->fdw_state;
     ListCell *l;
     AttrNumber attnum;
-
-    elog(DEBUG4, "in hvaultIterate %d:%d:%d", 1, fdw_exec_state->cur_line, 
-                                                 fdw_exec_state->cur_sample);
 
     if (fdw_exec_state->cur_line == 0 && fdw_exec_state->cur_sample == 0)
     {
@@ -1167,6 +1170,8 @@ hdf_file_close(HvaultHDFFile *file)
                        file->nextbrdlon = NULL;
     file->num_samples = -1;
     file->num_lines = -1;
+    elog(DEBUG1, "File processed in %f sec", 
+         ((float) (clock() - file->open_time)) / CLOCKS_PER_SEC);
 }
 
 static bool
@@ -1178,6 +1183,7 @@ hdf_file_open(HvaultExecState const *scan,
     MemoryContext oldmemcxt;
 
     elog(DEBUG1, "loading hdf file %s", filename);
+    file->open_time = clock();
     Assert(file->filememcxt);
     oldmemcxt = MemoryContextSwitchTo(file->filememcxt);
 
@@ -1395,23 +1401,22 @@ fill_float_val(HvaultExecState const *scan, AttrNumber attnum)
     else
     {
         scan->nulls[attnum] = false;
-        scan->values[attnum] = Float8GetDatum(
-            hdf_value(sds->type, sds->cur, scan->cur_sample) / sds->scale - 
-            sds->offset);
+        scan->sds_vals[attnum] = hdf_value(
+            sds->type, sds->cur, scan->cur_sample) / sds->scale - sds->offset;
+        scan->values[attnum] = Float8GetDatumFast(scan->sds_vals[attnum]);
     }
 }
 
 static void
 fill_point_val(HvaultExecState const *scan, AttrNumber attnum)
 {
-    LWPOINT *point;
-    LWGEOM *geom;
+    /* This is quite dirty code that uses internal representation of LWPOINT.
+       However it is a very hot place here */
     GSERIALIZED *ret;
-    point = lwpoint_make2d(SRID_UNKNOWN, 
-        hdf_value(scan->lat->type, scan->lat->cur, scan->cur_sample),
-        hdf_value(scan->lon->type, scan->lon->cur, scan->cur_sample));
-    geom = lwpoint_as_lwgeom( point );
-    ret = gserialized_from_lwgeom(geom, true, NULL);
+    double *data = (double *) scan->point->point->serialized_pointlist;
+    data[0] = hdf_value(scan->lat->type, scan->lat->cur, scan->cur_sample);
+    data[1] = hdf_value(scan->lon->type, scan->lon->cur, scan->cur_sample);
+    ret = gserialized_from_lwgeom((LWGEOM *) scan->point, true, NULL);
     scan->nulls[attnum] = false;
     scan->values[attnum] = PointerGetDatum(ret);
 }
@@ -1419,37 +1424,22 @@ fill_point_val(HvaultExecState const *scan, AttrNumber attnum)
 static void
 fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum)
 {
-    LWPOLY *poly;
-    LWGEOM *geom;
+    /* This is quite dirty code that uses internal representation of LWPOLY.
+       However it is a very hot place here */
     GSERIALIZED *ret;
-    POINTARRAY *points;
-    POINT4D p = {0,0,0,0};
-
-    points = ptarray_construct(false, false, 5);
-
-    p.x = scan->file.prevbrdlat[scan->cur_sample];
-    p.y = scan->file.prevbrdlon[scan->cur_sample];
-    ptarray_set_point4d(points, 0, &p);
-
-    p.x = scan->file.prevbrdlat[scan->cur_sample+1];
-    p.y = scan->file.prevbrdlon[scan->cur_sample+1];
-    ptarray_set_point4d(points, 1, &p);
-
-    p.x = scan->file.nextbrdlat[scan->cur_sample+1];
-    p.y = scan->file.nextbrdlon[scan->cur_sample+1];
-    ptarray_set_point4d(points, 2, &p);
-
-    p.x = scan->file.nextbrdlat[scan->cur_sample];
-    p.y = scan->file.nextbrdlon[scan->cur_sample];
-    ptarray_set_point4d(points, 3, &p);
-
-    p.x = scan->file.prevbrdlat[scan->cur_sample];
-    p.y = scan->file.prevbrdlon[scan->cur_sample];
-    ptarray_set_point4d(points, 4, &p);
-
-    poly = lwpoly_construct(SRID_UNKNOWN, NULL, 1, &points);
-    geom = lwpoly_as_lwgeom(poly);
-    ret = gserialized_from_lwgeom(geom, true, NULL);
+    double *data = (double *) scan->poly->rings[0]->serialized_pointlist;
+    data[0] = scan->file.prevbrdlat[scan->cur_sample];
+    data[1] = scan->file.prevbrdlon[scan->cur_sample];
+    data[2] = scan->file.prevbrdlat[scan->cur_sample+1];
+    data[3] = scan->file.prevbrdlon[scan->cur_sample+1];
+    data[4] = scan->file.nextbrdlat[scan->cur_sample+1];
+    data[5] = scan->file.nextbrdlon[scan->cur_sample+1];
+    data[6] = scan->file.nextbrdlat[scan->cur_sample];
+    data[7] = scan->file.nextbrdlon[scan->cur_sample];
+    data[8] = scan->file.prevbrdlat[scan->cur_sample];
+    data[9] = scan->file.prevbrdlon[scan->cur_sample];
+    lwgeom_calculate_gbox((LWGEOM *) scan->poly, scan->poly->bbox);
+    ret = gserialized_from_lwgeom((LWGEOM *) scan->poly, true, NULL);
     scan->nulls[attnum] = false;
     scan->values[attnum] = PointerGetDatum(ret);   
 }
