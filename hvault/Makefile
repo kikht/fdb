@@ -1,8 +1,8 @@
 INC=-I/usr/pgsql-9.2/include/server/
 LIB=-l:/usr/pgsql-9.2/lib/postgis-2.0.so \
 	-L/usr/lib/hdf -lmfhdf -ldf -ljpeg -lz 
-CFLAGS=-g -O3 -flto -march=native -Wall -pedantic
-# CFLAGS=-g -Wall -pedantic
+# CFLAGS=-g -O3 -flto -march=native -Wall -pedantic
+CFLAGS=-g -Wall -pedantic
 
 hvault: hvault.so
 	psql gis-test -c "drop extension hvault; create extension hvault;"
