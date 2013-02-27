@@ -14,6 +14,17 @@ CREATE FOREIGN DATA WRAPPER hvault_fdw
 
 CREATE SERVER hvault_service FOREIGN DATA WRAPPER hvault_fdw;
 
+CREATE OR REPLACE FUNCTION hvault_load_modis_swath (cstring, cstring)
+    RETURNS bool
+    AS 'MODULE_PATHNAME'
+    LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION hvault_mass_load_modis_swath 
+    (cstring, cstring, cstring)
+    RETURNS int4
+    AS 'MODULE_PATHNAME'
+    LANGUAGE C STRICT;
+
 -- CREATE FOREIGN TABLE test_single (
 --     file_id   int4        OPTIONS (type 'file_index'),
 --     line_id   int4        OPTIONS (type 'line_index'),
@@ -42,18 +53,25 @@ CREATE SERVER hvault_service FOREIGN DATA WRAPPER hvault_fdw;
 
 CREATE TABLE hdf_catalog (
     file_id   serial    PRIMARY KEY,
-    filename  text      NOT NULL,
-    filetime  timestamp,
-    footprint geometry
+    filename  text      UNIQUE NOT NULL,
+    starttime timestamp,
+    stoptime  timestamp,
+    footprint geometry,
+    size      int8
 );
 
-INSERT INTO hdf_catalog (filename, filetime) VALUES 
-    ('/home/kikht/Downloads/MOD09.A2013026.0635.005.2013027075743.hdf',
-     '2013-01-26 06:35:00'),
-    ('/home/kikht/Downloads/MOD09.A2013027.0540.005.2013028080139.hdf',
-     '2013-01-27 05:40:00'),
-    ('/home/kikht/Downloads/MOD09.A2013027.0536.005.2013028080029.hdf',
-     '2013-01-27 05:36:00');
+-- SELECT hvault_load_modis_swath(
+--     'hdf_catalog',
+--     '/home/kikht/Downloads/MOD09.A2013026.0635.005.2013027075743.hdf');
+-- SELECT hvault_load_modis_swath(
+--     'hdf_catalog',
+--     '/home/kikht/Downloads/MOD09.A2013027.0540.005.2013028080139.hdf');
+-- SELECT hvault_load_modis_swath(
+--     'hdf_catalog',
+--     '/home/kikht/Downloads/MOD09.A2013027.0536.005.2013028080029.hdf');
+
+SELECT hvault_mass_load_modis_swath(
+    'hdf_catalog', '/home/kikht/Downloads', 'MOD09*.hdf');
 
 CREATE FOREIGN TABLE test_catalog (
     file_id   int4        OPTIONS (type 'file_index'),
