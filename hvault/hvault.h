@@ -1,10 +1,15 @@
+#ifndef _HVAULT_H_
+#define _HVAULT_H_
+
+#include <time.h>
 /* PostgreSQL */
+
 #include <postgres.h>
-#include <access/attnum.h>
-#include <commands/explain.h>
-#include <foreign/fdwapi.h>
 #include <funcapi.h>
+#include <access/attnum.h>
+#include <executor/spi.h>
 #include <nodes/pg_list.h>
+#include <utils/palloc.h>
 
 /* PostGIS */
 #include <liblwgeom.h>
@@ -25,156 +30,122 @@ typedef enum HvaultColumnType
     HvaultColumnFileIdx,
     HvaultColumnLineIdx,
     HvaultColumnSampleIdx,
-    HvaultColumnTime
+    HvaultColumnTime,
 } HvaultColumnType;
 
 /*
  * FDW-specific information for RelOptInfo.fdw_private.
  */
-typedef struct
-{
-    List *coltypes; /* list of HvaultColumnType as int */
-    char *catalog; /* name of catalog table */
-} HvaultPlanState;
 
 typedef struct 
 {
-    char * name;
-    void *cur, *next, *prev;
-    void *fill_val;
-    int32_t id, type;
-    double scale, offset;
-    bool haswindow;
+    Index relid;      
+    AttrNumber natts;
+    HvaultColumnType *coltypes;
+    char *catalog;
+} HvaultTableInfo;
+
+typedef struct 
+{
+    HvaultTableInfo *table;
+    List *catalog_quals;
+} HvaultPathData;
+
+enum HvaultPlanItems
+{
+    HvaultPlanCatalogQuery = 0,
+    HvaultPlanColtypes,
+
+    HvaultPlanNumParams,
+};
+
+typedef struct
+{
+    HvaultTableInfo const *table;
+    List *fdw_expr;
+    StringInfoData query;
+} HvaultDeparseContext;
+
+typedef struct 
+{
+    char * name;             /* Name of SDS */
+    void *cur, *next, *prev; /* Buffers for SDS lines */
+    void *fill_val;          /* Fill value */
+    int32_t id;              /* HDF SDS interface handle */
+    int32_t type;            /* HDF type of data */
+    double scale, offset;    /* Scale parameters */
+    bool haswindow;          /* Whether prev & next lines are required */
 } HvaultSDSBuffer;
 
 typedef struct 
 {
-    MemoryContext filememcxt;
-    char const * filename;
-    List *sds; /* list of HvaultSDSBuffer */
-    float *prevbrdlat, *prevbrdlon, *nextbrdlat, *nextbrdlon;
+    MemoryContext filememcxt;       /* context for file related buffers */
+    char const * filename;       
+    List *sds;                      /* list of HvaultSDSBuffer */
+    float *prevbrdlat, *prevbrdlon; /* Buffers for footprint calculation */
+    float *nextbrdlat, *nextbrdlon; /* Buffers for footprint calculation */
 
-    int32_t sd_id;
-    int num_samples, num_lines;
-    clock_t open_time;
+    int32_t sd_id;                  /* HDF interface handle */
+    int num_samples, num_lines;     /* dimensions of file datasets */
+    clock_t open_time;              /* time when file was opened */
 } HvaultHDFFile;
+
+typedef struct
+{
+    MemoryContext cursormemctx;
+    char const *catalog;       /* Name of catalog table */
+    char const *catalog_query; /* WHERE part of the catalog query */
+    List *fdw_expr;      /* List of prepared for computation query expressions*/
+    ExprContext *expr_ctx;
+    char const *file_cursor_name; /* Name of catalog query cursor */
+    SPIPlanPtr prep_stmt;
+    Datum *values;
+    char *nulls;
+} HvaultCatalogCursor;
 
 /*
  * FDW-specific information for ForeignScanState.fdw_state.
  */
 typedef struct
 {
-    AttrNumber natts;
-    List *coltypes;
-    HvaultSDSBuffer **colbuffer;
-    Datum *values;
-    bool *nulls;
+    /* query info */
+    AttrNumber natts;    /* Total number of tuple attributes */
+    List *coltypes;      /* List of HvaultColumnTypes for each column */
+    bool has_footprint;  /* true if query needs footprint calculation */
+    int scan_size;       /* Number of lines in one scan */
 
-    char *catalog;
-    char const *file_cursor_name;
+    /* iteration state */
+    HvaultCatalogCursor cursor;
+    /* file */
+    HvaultHDFFile file;           /* current file */
+    HvaultSDSBuffer **colbuffer;  /* SDS buffer references for each column */
+    HvaultSDSBuffer *lat, *lon;   /* Latitude & longitude SDS buffers for 
+                                     footprint calculation */
+    Timestamp file_time;          /* File timestamp */
+    /* current position */
+    int cur_file, cur_line, cur_sample; /* Current position */
 
-    HvaultSDSBuffer *lat, *lon;
-    HvaultHDFFile file;
-
-    int cur_file, cur_line, cur_sample;
-    Timestamp file_time;
-    int scan_size;
-    bool has_footprint;
-
-    double *sds_vals;
-    LWPOINT *point;
-    POINTARRAY *ptarray;
-    LWPOLY *poly;
+    /* tuple values */
+    Datum *values;       /* Tuple values */
+    bool *nulls;         /* Tuple null flags */ 
+    /* by-reference values */
+    double *sds_vals;    /* Values of SDS columns */
+    LWPOINT *point;      /* Pixel point value */
+    LWPOLY *poly;        /* Pixel footprint value */
+    POINTARRAY *ptarray; /* Point array for footprint */
 } HvaultExecState;
 
-
-/*
- * SQL functions
- */
+/* hvault.c */
 extern Datum hvault_fdw_validator(PG_FUNCTION_ARGS);
 extern Datum hvault_fdw_handler(PG_FUNCTION_ARGS);
 
-/* 
- * FDW callback routines 
- */
-static void 
-hvaultGetRelSize(PlannerInfo *root, 
-                 RelOptInfo *baserel, 
-                 Oid foreigntableid);
-static void 
-hvaultGetPaths(PlannerInfo *root, 
-               RelOptInfo *baserel,
-               Oid foreigntableid);
-static ForeignScan *
-hvaultGetPlan(PlannerInfo *root, 
-              RelOptInfo *baserel,
-              Oid foreigntableid, 
-              ForeignPath *best_path,
-              List *tlist, 
-              List *scan_clauses);
-static void hvaultExplain(ForeignScanState *node, ExplainState *es);
-static void hvaultBegin(ForeignScanState *node, int eflags);
-static TupleTableSlot *hvaultIterate(ForeignScanState *node);
-static void hvaultReScan(ForeignScanState *node);
-static void hvaultEnd(ForeignScanState *node);
-/*
-static bool 
-hvaultAnalyze(Relation relation, 
-              AcquireSampleRowsFunc *func,
-              BlockNumber *totalpages );
-*/
+/* interpolate.c */
+void interpolate_line(size_t m, float const *p, float const *n, float *r);
+void extrapolate_line(size_t m, float const *p, float const *n, float *r);
 
-/*
- * Footprint interpolation routines
- */
-static inline float interpolate_point(float p1, float p2, float p3, float p4);
-static inline float extrapolate_point(float n1, float n2, float p1, float p2);
-static inline float extrapolate_corner_point(float c, float l, 
-                                             float u, float lu);
-static void extrapolate_line(size_t m, 
-                             float const *p, 
-                             float const *n, 
-                             float *r);
-static void interpolate_line(size_t m, 
-                             float const *p, 
-                             float const *n, 
-                             float *r);
-static void calc_next_footprint(HvaultExecState const *scan, 
-                                HvaultHDFFile *file);
-/*
- * HDF utils
- */
-static size_t hdf_sizeof(int32_t type);
-static double hdf_value (int32_t type, void *buffer, size_t offset);
-static bool   hdf_cmp   (int32_t type, void *buffer, size_t offset, void *val);
-static bool   hdf_file_open(HvaultExecState const *scan,
-                            char const *filename,
-                            HvaultHDFFile *file);
-static void   hdf_file_close(HvaultHDFFile *file);
-
-/*
- * Options routines 
- */
-static HvaultColumnType parse_column_type(char *type);
-static List *get_column_types(PlannerInfo *root, 
-                              RelOptInfo *baserel, 
-                              Oid foreigntableid);
-static void  check_column_types(List *coltypes, TupleDesc tupdesc);
-static char *get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc);
-static int   get_row_width(HvaultPlanState *fdw_private);
-static char * get_table_option(Oid foreigntableid, char *option);
-
-/* 
- * Tuple fill utilities
- */
-static void fill_float_val(HvaultExecState const *scan, AttrNumber attnum);
-static void fill_point_val(HvaultExecState const *scan, AttrNumber attnum);
-static void fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum);
+/* catalog.c */
+bool isCatalogQual(Expr *expr, HvaultTableInfo const *table);
+void deparseExpr(Expr *node, HvaultDeparseContext *ctx);
 
 
-static List *get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel);
-static HvaultSDSBuffer *get_sds_buffer(List **buffers, char *name);
-
-static void fetch_next_line(HvaultExecState *scan);
-static double get_num_files(HvaultPlanState *fdw_private);
-static bool fetch_next_file(HvaultExecState *scan);
+#endif /* _HVAULT_H_ */
