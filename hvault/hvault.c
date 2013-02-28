@@ -32,21 +32,6 @@ PG_MODULE_MAGIC;
 /* 
  * FDW callback routines 
  */
-static void 
-hvaultGetRelSize(PlannerInfo *root, 
-                 RelOptInfo *baserel, 
-                 Oid foreigntableid);
-static void 
-hvaultGetPaths(PlannerInfo *root, 
-               RelOptInfo *baserel,
-               Oid foreigntableid);
-static ForeignScan *
-hvaultGetPlan(PlannerInfo *root, 
-              RelOptInfo *baserel,
-              Oid foreigntableid, 
-              ForeignPath *best_path,
-              List *tlist, 
-              List *scan_clauses);
 static void hvaultExplain(ForeignScanState *node, ExplainState *es);
 static void hvaultBegin(ForeignScanState *node, int eflags);
 static TupleTableSlot *hvaultIterate(ForeignScanState *node);
@@ -68,14 +53,8 @@ static void calc_next_footprint(HvaultExecState const *scan,
 /*
  * Options routines 
  */
-static HvaultColumnType *get_column_types(PlannerInfo *root, 
-                                          RelOptInfo *baserel, 
-                                          Oid foreigntableid,
-                                          AttrNumber natts);
 static void  check_column_types(List *coltypes, TupleDesc tupdesc);
 static char *get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc);
-static int   get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs);
-static char *get_table_option(Oid foreigntableid, char *option);
 
 /* 
  * Tuple fill utilities
@@ -84,14 +63,11 @@ static void fill_float_val(HvaultExecState const *scan, AttrNumber attnum);
 static void fill_point_val(HvaultExecState const *scan, AttrNumber attnum);
 static void fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum);
 
-
-static List *get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel);
 static HvaultSDSBuffer *get_sds_buffer(List **buffers, char *name);
-
 static void fetch_next_line(HvaultExecState *scan);
-static double get_num_files(char *catalog);
 static bool fetch_next_file(HvaultExecState *scan);
 static void init_catalog_cursor(HvaultCatalogCursor *cursor);
+
 
 
 /*
@@ -122,240 +98,6 @@ Datum
 hvault_fdw_validator(PG_FUNCTION_ARGS)
 {
     PG_RETURN_BOOL(true);
-}
-
-static void 
-hvaultGetRelSize(PlannerInfo *root, 
-                 RelOptInfo *baserel, 
-                 Oid foreigntableid)
-{
-    HvaultTableInfo *fdw_private;
-    double num_files, tuples_per_file, scale_factor;
-    Relation rel;
-    TupleDesc tupleDesc;
-    
-
-    fdw_private = (HvaultTableInfo *) palloc(sizeof(HvaultTableInfo));
-    baserel->fdw_private = fdw_private;
-
-    /* We can build estimate basing on:
-     * baserel->reltargetlist - List of Var and PlaceHolderVar nodes for 
-     *      the values we need to output from this relation. 
-     * baserel->baserestrictinfo - 
-     *      List of RestrictInfo nodes, containing info about
-     *      each non-join qualification clause in which this relation
-     *      participates 
-     * baserel->joininfo - 
-     *      List of RestrictInfo nodes, containing info about each
-     *      join clause in which this relation participates 
-     *
-     * Don't forget about equivalence classes!
-     */
-
-    fdw_private->relid = baserel->relid;
-    rel = heap_open(foreigntableid, AccessShareLock);
-    tupleDesc = RelationGetDescr(rel);
-    fdw_private->natts = tupleDesc->natts;
-    heap_close(rel, AccessShareLock);    
-    fdw_private->coltypes = get_column_types(root, baserel, foreigntableid, 
-                                             fdw_private->natts);
-    fdw_private->catalog = get_table_option(foreigntableid, "catalog");
-
-    // TODO: Use constant catalog quals for better estimate
-    num_files = get_num_files(fdw_private->catalog);
-    tuples_per_file = TUPLES_PER_FILE;
-    scale_factor = 1; /* 4 for 500m, 16 for 250m */
-
-    baserel->width = get_row_width(fdw_private->coltypes, fdw_private->natts);
-    baserel->rows = num_files * tuples_per_file * scale_factor ; 
-
-    elog(DEBUG1, "GetRelSize: baserestrictinfo: %s\njoininfo: %s",
-         nodeToString(baserel->baserestrictinfo),
-         nodeToString(baserel->joininfo));
-}
-
-static void 
-hvaultGetPaths(PlannerInfo *root, 
-               RelOptInfo *baserel,
-               Oid foreigntableid)
-{
-    HvaultTableInfo *fdw_private = (HvaultTableInfo *) baserel->fdw_private;
-    ForeignPath *path = NULL;
-    double rows;           /* estimate number of rows returned by path */
-    Cost startup_cost, total_cost;  
-    List *pathkeys = NIL;  /* represent a pre-sorted result */
-    Relids required_outer = NULL; /* Bitmap of rels supplying parameters used 
-                                     by path. Look at the baserel.joininfo and 
-                                     equivalence classes to generate possible 
-                                     parametrized paths*/
-    /*List *fdw_path_private = NIL; best practice is to use a representation 
-                               that's dumpable by nodeToString, for use with 
-                               debugging support available in the backend. 
-                               List of DefElem suits well for this*/
-    HvaultPathData *plain_path;
-    ListCell *l;
-    
-    rows = baserel->rows;
-    startup_cost = 10;
-    /* TODO: files * lines_per_file * line_cost(num_sds, has_footprint) */
-    total_cost = rows * 0.001; 
-
-
-    // foreach(l, baserel->baserestrictinfo)
-    // {
-    //     RestrictInfo *rInfo = (RestrictInfo *) lfirst(l);
-    //     if (IsA(rInfo->clause, OpExpr))
-    //     {
-    //         OpExpr *expr = (OpExpr *) rInfo->clause;
-    //         Var *var = NULL;
-    //         Expr *arg = NULL;
-
-    //         if (list_length(expr->args) != 2)
-    //             continue;
-
-    //         if (IsA(linitial(expr->args), Var))
-    //         {
-    //             var = (Var *) linitial(expr->args);
-    //             arg = lsecond(expr->args);
-    //         }
-    //         else if (IsA(lsecond(expr->args), Var))
-    //         {
-    //             var = (Var *) lsecond(expr->args);
-    //             arg = linitial(expr->args);
-    //         }
-    //         else 
-    //         {
-    //             /* Strange expression, just skip */
-    //             continue;
-    //         }
-
-    //         if (fdw_private->coltypes[var->varattno-1] == HvaultColumnTime)
-    //         {
-    //             char *opname = get_opname(expr->opno);
-    //             size_t arg_expr_pos = list_length(fdw_exprs);
-    //             /* exprType(arg) - to get expression type */
-    //             elog(DEBUG1, "Detected operator %s with expression %s",
-    //                  opname, nodeToString(arg));
-    //             //TODO: pass opname & expression to catalog scanner
-    //             fdw_exprs = lappend(fdw_exprs, arg);
-    //         }
-    //     }
-    // }
-
-    plain_path = palloc(sizeof(HvaultPathData));
-    plain_path->table = fdw_private;
-    foreach(l, baserel->baserestrictinfo)
-    {
-        RestrictInfo *rinfo = lfirst(l);
-        if (isCatalogQual(rinfo->clause, fdw_private))
-        {
-            plain_path->catalog_quals = 
-                lappend(plain_path->catalog_quals, rinfo);
-        } 
-    }
-
-    /* Process pathkeys */
-    if (has_useful_pathkeys(root, baserel))
-    {
-        /* TODO: time sort */
-        pathkeys = get_sort_pathkeys(root, baserel);
-    }
-
-    /*
-    bool add_path_precheck(RelOptInfo *parent_rel,
-                      Cost startup_cost, Cost total_cost,
-                      List *pathkeys, Relids required_outer)
-    Can be useful to reject uninteresting paths before creating path struct
-    */ 
-
-    /* ParamPathInfo *pinfo = get_baserel_parampathinfo(root, baserel, 0); */
-    path = create_foreignscan_path(root, 
-                                   baserel, 
-                                   rows, 
-                                   startup_cost, 
-                                   total_cost, 
-                                   pathkeys, 
-                                   required_outer, 
-                                   (List *) plain_path);
-    add_path(baserel, (Path *) path);
-}
-
-static ForeignScan *
-hvaultGetPlan(PlannerInfo *root, 
-              RelOptInfo *baserel,
-              Oid foreigntableid, 
-              ForeignPath *best_path,
-              List *tlist, 
-              List *scan_clauses)
-{
-    HvaultPathData *fdw_private = (HvaultPathData *) best_path->fdw_private; 
-
-    List *rest_clauses = NIL; /* clauses that must be checked externally */
-    /* Both of these lists must be represented in a form that 
-       copyObject knows how to copy */
-    /*List *fdw_exprs = NIL;  expressions that will be needed inside scan
-                              these include right parts of the restriction 
-                              clauses and right parts of parametrized
-                              join clauses */
-    List *fdw_plan_private = NIL;
-    ListCell *l;
-    HvaultDeparseContext deparse_ctx;
-    bool first_qual;
-    List *coltypes;
-    AttrNumber attnum;
-
-    /* Prepare catalog query */
-    deparse_ctx.table = fdw_private->table;
-    deparse_ctx.fdw_expr = NIL;
-    initStringInfo(&deparse_ctx.query);
-    first_qual = true;
-    foreach(l, fdw_private->catalog_quals)
-    {   
-        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        if (first_qual)
-        {
-            appendStringInfoString(&deparse_ctx.query, "WHERE ");
-        }
-        else 
-        {
-            appendStringInfoString(&deparse_ctx.query, " AND ");
-        }
-        deparseExpr(rinfo->clause, &deparse_ctx);
-    }
-
-    /* Prepare clauses that need to be checked externally */
-    foreach(l, scan_clauses)
-    {
-        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        if (!list_member_ptr(fdw_private->catalog_quals, rinfo))
-        {
-            rest_clauses = lappend(rest_clauses, rinfo);
-        }
-        else
-        {
-            elog(DEBUG1, "Skipping catalog clause %s", 
-                 nodeToString(rinfo->clause));
-        }
-    }
-    rest_clauses = extract_actual_clauses(scan_clauses, false);
-
-    elog(DEBUG1, "GetPlan: scan_cl: %s\nrest_cl: %s",
-         nodeToString(scan_clauses),
-         nodeToString(rest_clauses));
-    elog(DEBUG3, "GetPlan: tlist: %s", nodeToString(tlist));
-
-    /* store fdw_private in List */
-    coltypes = NIL;
-    for (attnum = 0; attnum < fdw_private->table->natts; attnum++)
-    {
-        coltypes = lappend_int(coltypes, fdw_private->table->coltypes[attnum]);
-    }
-    fdw_plan_private = lappend(fdw_plan_private, 
-                               makeString(deparse_ctx.query.data));
-    fdw_plan_private = lappend(fdw_plan_private, coltypes);
-
-    return make_foreignscan(tlist, rest_clauses, baserel->relid, 
-                            deparse_ctx.fdw_expr, fdw_plan_private);
 }
 
 static void 
@@ -672,7 +414,7 @@ hvaultEnd(ForeignScanState *node)
 
 
 
-static char * 
+char * 
 get_table_option(Oid foreigntableid, char *option)
 {
     ListCell *l;
@@ -689,135 +431,7 @@ get_table_option(Oid foreigntableid, char *option)
     return NULL;
 }
 
-typedef struct 
-{
-    HvaultColumnType *types;
-    Index relid;
-    Oid foreigntableid;
-    AttrNumber natts;
-} HvaultColumnTypeWalkerContext;
 
-static bool 
-get_column_types_walker(Node *node, HvaultColumnTypeWalkerContext *cxt)
-{
-    if (node == NULL)
-        return false;
-    if (IsA(node, Var))
-    {
-        Var *var = (Var *) node;
-        if (var->varno == cxt->relid)
-        {
-            AttrNumber attnum;
-            Assert(var->varattno <= natts);
-            attnum = var->varattno-1;
-            if (cxt->types[attnum] == HvaultColumnNull)
-            {
-                List *colopts;
-                ListCell *m;
-
-                cxt->types[attnum] = HvaultColumnFloatVal;
-                colopts = GetForeignColumnOptions(cxt->foreigntableid, 
-                                                  var->varattno);
-                foreach(m, colopts)
-                {
-                    DefElem *opt = (DefElem *) lfirst(m);
-                    if (strcmp(opt->defname, "type") == 0)
-                    {
-                        char *type = defGetString(opt);
-
-                        if (strcmp(type, "point") == 0) 
-                        {
-                            cxt->types[attnum] = HvaultColumnPoint;
-                        }
-                        else if (strcmp(type, "footprint") == 0)
-                        {
-                            cxt->types[attnum] = HvaultColumnFootprint;   
-                        }
-                        else if (strcmp(type, "file_index") == 0)
-                        {
-                            cxt->types[attnum] = HvaultColumnFileIdx;
-                        }
-                        else if (strcmp(type, "line_index") == 0)
-                        {
-                            cxt->types[attnum] = HvaultColumnLineIdx;
-                        }
-                        else if (strcmp(type, "sample_index") == 0)
-                        {
-                            cxt->types[attnum] = HvaultColumnSampleIdx;
-                        }
-                        else if (strcmp(type, "time") == 0)
-                        {
-                            cxt->types[attnum] = HvaultColumnTime;
-                        }
-                        else
-                        {
-                            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                                            errmsg("Unknown column type %s", 
-                                                   type)));
-                        }
-                        elog(DEBUG1, "col: %d strtype: %s type: %d", 
-                             attnum, type, cxt->types[attnum]);
-                    }
-                }
-            }
-        }
-    }
-    return expression_tree_walker(node, get_column_types_walker, (void *) cxt);
-}
-
-static HvaultColumnType *
-get_column_types(PlannerInfo *root, 
-                 RelOptInfo *baserel, 
-                 Oid foreigntableid,
-                 AttrNumber natts)
-{
-    ListCell *l, *m;
-    AttrNumber attnum;
-    HvaultColumnTypeWalkerContext walker_cxt;
-
-    walker_cxt.natts = natts;
-    walker_cxt.relid = baserel->relid;
-    walker_cxt.foreigntableid = foreigntableid;
-    walker_cxt.types = palloc(sizeof(HvaultColumnType) * walker_cxt.natts);
-    for (attnum = 0; attnum < walker_cxt.natts; attnum++)
-    {
-        walker_cxt.types[attnum] = HvaultColumnNull;
-    }
-
-    get_column_types_walker((Node *) baserel->reltargetlist, &walker_cxt);
-    foreach(l, baserel->baserestrictinfo)
-    {
-        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        get_column_types_walker((Node *) rinfo->clause, &walker_cxt);
-    }
-
-    foreach(l, baserel->joininfo)
-    {
-        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        get_column_types_walker((Node *) rinfo->clause, &walker_cxt);
-    }
-
-    foreach(l, root->eq_classes)
-    {
-        EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
-        if (!bms_is_member(baserel->relid, ec->ec_relids))
-        {
-            continue;
-        }
-        foreach(m, ec->ec_members)
-        {
-            EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
-            get_column_types_walker((Node *) em->em_expr, &walker_cxt);
-        }
-    }
-
-    // for (attnum = 0; attnum < walker_cxt.natts; attnum++)
-    // {
-    //     res = lappend_int(res, walker_cxt.types[attnum]);
-    // }
-    // pfree(walker_cxt.types);
-    return walker_cxt.types;
-}
 
 static char *
 get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc)
@@ -839,42 +453,6 @@ get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc)
     elog(DEBUG1, "Can't find sds option for att: %d relid: %d opts: %s", 
          attnum, relid, nodeToString(options));
     return NameStr(tupdesc->attrs[attnum]->attname);;
-}
-
-static int
-get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs)
-{
-    int width = 0;
-    AttrNumber i;
-
-    for (i = 0; i < numattrs; ++i)
-    {
-        switch (coltypes[i]) {
-            case HvaultColumnFloatVal:
-                width += sizeof(double);
-                break;
-            case HvaultColumnFileIdx:
-            case HvaultColumnLineIdx:
-            case HvaultColumnSampleIdx:
-                width += 4;
-                break;
-            case HvaultColumnPoint:
-                width += POINT_SIZE;
-                break;
-            case HvaultColumnFootprint:
-                width += FOOTPRINT_SIZE;
-                break;
-            case HvaultColumnTime:
-                width += 8;
-            case HvaultColumnNull:
-                /* nop */
-                break;
-            default:
-                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Undefined column type")));
-        }
-    }
-    return width;
 }
 
 static void
@@ -938,114 +516,6 @@ check_column_types(List *coltypes, TupleDesc tupdesc)
         }
         attnum++;
     }
-}
-
-static List *
-get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel)
-{
-    List *pathkeys = NIL;
-    ListCell *l, *m;
-    PathKey *fileidx = NULL, *lineidx = NULL, *sampleidx = NULL;
-    Oid opfamily;
-    HvaultTableInfo *fdw_private = (HvaultTableInfo *) baserel->fdw_private;
-
-    opfamily = get_opfamily_oid(BTREE_AM_OID, 
-                                list_make1(makeString("integer_ops")), 
-                                false);
-    elog(DEBUG1, "processing pathkeys relid: %d opfam: %d", 
-         baserel->relid, opfamily);
-    foreach(l, root->eq_classes)
-    {
-        EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
-        elog(DEBUG1, "processing EquivalenceClass");
-        if (!bms_is_member(baserel->relid, ec->ec_relids))
-        {
-            elog(DEBUG1, "not my relid");
-            continue;
-        }
-
-        foreach(m, ec->ec_members)
-        {
-            EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
-            elog(DEBUG1, "processing EquivalenceMember %s", 
-                 nodeToString(em));
-            if (IsA(em->em_expr, Var))
-            {
-                Var *var = (Var *) em->em_expr;
-                if (baserel->relid == var->varno)
-                {
-                    PathKey *pathkey = NULL;
-                    Assert(var->varattno < fdw_private->natts);
-                    switch(fdw_private->coltypes[var->varattno-1])
-                    {
-                        case HvaultColumnFileIdx:
-                            if (!fileidx)
-                            {
-                                fileidx = pathkey = 
-                                    (PathKey *) palloc(sizeof(PathKey));
-                            } 
-                            else 
-                            {
-                                elog(WARNING, "duplicate file index column");
-                            }
-                            break;
-                        case HvaultColumnLineIdx:
-                            if (!lineidx)
-                            {
-                                lineidx = pathkey = 
-                                    (PathKey *) palloc(sizeof(PathKey));
-                            } 
-                            else 
-                            {
-                                elog(WARNING, "duplicate line index column");
-                            }
-                            break;
-                        case HvaultColumnSampleIdx:
-                            if (!sampleidx)
-                            {
-                                sampleidx = pathkey = 
-                                    (PathKey *) palloc(sizeof(PathKey));
-                            } 
-                            else 
-                            {
-                                elog(WARNING, "duplicate sample index column");
-                            }
-                            break;
-                        default:
-                            /* nop */
-                            break;
-                    }
-
-                    if (pathkey)
-                    {
-                        pathkey->pk_eclass = ec;
-                        pathkey->pk_nulls_first = false;
-                        pathkey->pk_strategy = BTLessStrategyNumber;
-                        pathkey->pk_opfamily = opfamily;
-                        elog(DEBUG1, "using this pathkey for sort");
-                    }
-                }
-            }
-        }
-    }
-
-    if (fileidx) 
-    {
-        pathkeys = lappend(pathkeys, fileidx);
-        if (lineidx)
-        {
-            pathkeys = lappend(pathkeys, lineidx);
-            if (sampleidx)
-            {
-                pathkeys = lappend(pathkeys, sampleidx);
-            }
-        }
-        pathkeys = canonicalize_pathkeys(root, pathkeys);
-        pathkeys = truncate_useless_pathkeys(root, baserel, pathkeys);
-    }
-
-    elog(DEBUG1, "pathkeys: %s", nodeToString(pathkeys));
-    return pathkeys;
 }
 
 static HvaultSDSBuffer *
@@ -1261,67 +731,6 @@ fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum)
     scan->values[attnum] = PointerGetDatum(ret);   
 }
 
-static double 
-get_num_files(char *catalog)
-{
-    StringInfo query_str;
-    Datum val;
-    int64_t num_files;
-    bool isnull;
-
-    if (!catalog)
-    {
-        /* Single file mode */
-        return 1;
-    }
-
-    if (SPI_connect() != SPI_OK_CONNECT)
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                     errmsg("Can't connect to SPI")));
-        return 0; /* Will never reach this */
-    }
-
-    query_str = makeStringInfo();
-    /* Add constraints */
-    appendStringInfo(query_str, "SELECT COUNT(*) FROM %s", catalog);
-    if (SPI_execute(query_str->data, true, 1) != SPI_OK_SELECT || 
-        SPI_processed != 1)
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't get number of rows in catalog %s", 
-                               catalog)));
-        return 0; /* Will never reach this */      
-    }
-    pfree(query_str->data);
-    pfree(query_str);
-    if (SPI_tuptable->tupdesc->natts != 1 ||
-        SPI_tuptable->tupdesc->attrs[0]->atttypid != INT8OID)
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't get number of rows in catalog %s", 
-                               catalog)));
-        return 0; /* Will never reach this */         
-    }
-    val = heap_getattr(SPI_tuptable->vals[0], 1, 
-                       SPI_tuptable->tupdesc, &isnull);
-    if (isnull)
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't get number of rows in catalog %s", 
-                               catalog)));
-        return 0; /* Will never reach this */            
-    }
-    num_files = DatumGetInt64(val);
-    if (SPI_finish() != SPI_OK_FINISH)    
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't finish access to SPI")));
-        return 0; /* Will never reach this */   
-    }
-    return num_files;
-}
-
 static bool
 fetch_next_file(HvaultExecState *scan)
 {
@@ -1468,3 +877,5 @@ init_catalog_cursor(HvaultCatalogCursor *cursor)
                                   cursor->nulls, true);
     cursor->file_cursor_name = file_cursor->name;
 }
+
+

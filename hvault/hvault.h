@@ -9,16 +9,14 @@
 #include <access/attnum.h>
 #include <executor/spi.h>
 #include <nodes/pg_list.h>
+#include <nodes/relation.h>
 #include <utils/palloc.h>
 
 /* PostGIS */
 #include <liblwgeom.h>
 
 #define TUPLES_PER_FILE (double)(2030*1354)
-/* 4 (size) + 3 (srid) + 1 (flags) + 4 (type) + 4 (num points) + 2 * 8 (coord)*/
 #define POINT_SIZE 32
-/* 4 (size) + 3 (srid) + 1 (flags) + 4 * 4 (bbox) + 4 (type) + 4 (num rings)
- * +  4 (num points) + 5 * 2 * 8 (coords) */
 #define FOOTPRINT_SIZE 120
 
 typedef enum HvaultColumnType
@@ -33,10 +31,6 @@ typedef enum HvaultColumnType
     HvaultColumnTime,
 } HvaultColumnType;
 
-/*
- * FDW-specific information for RelOptInfo.fdw_private.
- */
-
 typedef struct 
 {
     Index relid;      
@@ -47,7 +41,7 @@ typedef struct
 
 typedef struct 
 {
-    HvaultTableInfo *table;
+    HvaultTableInfo const *table;
     List *catalog_quals;
 } HvaultPathData;
 
@@ -138,14 +132,25 @@ typedef struct
 /* hvault.c */
 extern Datum hvault_fdw_validator(PG_FUNCTION_ARGS);
 extern Datum hvault_fdw_handler(PG_FUNCTION_ARGS);
+char *get_table_option(Oid foreigntableid, char *option);
+
 
 /* interpolate.c */
 void interpolate_line(size_t m, float const *p, float const *n, float *r);
 void extrapolate_line(size_t m, float const *p, float const *n, float *r);
 
-/* catalog.c */
-bool isCatalogQual(Expr *expr, HvaultTableInfo const *table);
-void deparseExpr(Expr *node, HvaultDeparseContext *ctx);
-
+/* plan.c */
+void hvaultGetRelSize(PlannerInfo *root, 
+                      RelOptInfo *baserel, 
+                      Oid foreigntableid);
+void hvaultGetPaths(PlannerInfo *root, 
+                    RelOptInfo *baserel,
+                    Oid foreigntableid);
+ForeignScan *hvaultGetPlan(PlannerInfo *root, 
+                           RelOptInfo *baserel,
+                           Oid foreigntableid, 
+                           ForeignPath *best_path,
+                           List *tlist, 
+                           List *scan_clauses);
 
 #endif /* _HVAULT_H_ */

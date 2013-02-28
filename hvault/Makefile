@@ -9,7 +9,7 @@ CFLAGS = -std=c11 -D_POSIX_C_SOURCE -g -Wall -pedantic
 hvault: hvault.so
 	psql gis-test -c "drop extension hvault; create extension hvault;"
 
-hvault.so: hvault.o interpolate.o hdf.o metaload.o catalog.o
+hvault.so: hvault.o interpolate.o hdf.o metaload.o plan.o
 	gcc $(CFLAGS) -shared -Wl,-soname,$@ -o $@ $^ $(LIB)
 
 metaload.o: metaload.c
@@ -21,7 +21,7 @@ interpolate.o: interpolate.c
 hdf.o: hdf.c hdf.h hvault.h
 	gcc $(CFLAGS) $(INC) -o $@ -c $<	
 
-catalog.o: catalog.c hvault.h
+plan.o: plan.c hvault.h
 	gcc $(CFLAGS) $(INC) -o $@ -c $<
 
 hvault.o: hvault.c hvault.h hdf.h
