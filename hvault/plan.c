@@ -9,6 +9,7 @@
 #include <nodes/pg_list.h>
 #include <nodes/primnodes.h>
 #include <nodes/relation.h>
+#include <optimizer/cost.h>
 #include <optimizer/restrictinfo.h>
 #include <optimizer/pathnode.h>
 #include <optimizer/paths.h>
@@ -19,6 +20,12 @@
 #include <utils/syscache.h>
 
 #include "hvault.h"
+
+#define TUPLES_PER_FILE (double)(2030*1354)
+#define POINT_SIZE 32
+#define FOOTPRINT_SIZE 120
+#define STARTUP_COST 10
+#define PIXEL_COST 0.001
 
 /* 
  * This file includes routines involved in query planning
@@ -32,12 +39,24 @@ static double get_num_files(char *catalog);
 static int    get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs);
 static List  *get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel);
 static bool   bms_equal_any(Relids relids, List *relids_list);
-static void   extractCatalogQuals(PlannerInfo *root, 
+static void   extractCatalogQuals(PlannerInfo *root,
                                   RelOptInfo *baserel,
                                   HvaultTableInfo const *table,
                                   List **catalog_quals,
                                   List **catalog_joins,
-                                  List **catalog_ec);
+                                  List **catalog_ec,
+                                  List **catalog_ec_vars);
+static Var   *isCatalogJoinEC(EquivalenceClass *ec, 
+                              HvaultTableInfo const *table);
+static void   generateJoinPath(PlannerInfo *root, 
+                               RelOptInfo *baserel, 
+                               HvaultTableInfo const *table,
+                               List *pathkeys,
+                               List *catalog_quals,
+                               List *catalog_joins,
+                               Relids relids,
+                               List **considered_relids);
+
 static void   deparseExpr(Expr *node, HvaultDeparseContext *ctx);
 
 
@@ -111,13 +130,15 @@ hvaultGetPaths(PlannerInfo *root,
     HvaultTableInfo *fdw_private = (HvaultTableInfo *) baserel->fdw_private;
     ForeignPath *path = NULL;
     List *pathkeys = NIL;  /* represent a pre-sorted result */
-
     HvaultPathData *plain_path;
-    ListCell *l, *m, *k;
+    Cost cost;
+    ListCell *l, *m, *k, *s;
     List *catalog_quals = NIL;
     List *catalog_joins = NIL;
     List *catalog_ec = NIL;
+    List *catalog_ec_vars = NIL;
     List *considered_relids = NIL;
+    int considered_clauses;
 
     /* Process pathkeys */
     if (has_useful_pathkeys(root, baserel))
@@ -126,75 +147,113 @@ hvaultGetPaths(PlannerInfo *root,
         pathkeys = get_sort_pathkeys(root, baserel);
     }
 
-    extractCatalogQuals(root, baserel, fdw_private, 
-                        &catalog_quals, &catalog_joins, &catalog_ec);
+    extractCatalogQuals(root, baserel, fdw_private, &catalog_quals, 
+                        &catalog_joins, &catalog_ec, &catalog_ec_vars);
     
     /* Create simple unparametrized path */
     plain_path = palloc(sizeof(HvaultPathData));
     plain_path->table = fdw_private;
     plain_path->catalog_quals = catalog_quals;
     // TODO: use catalog quals to better estimate number of rows and costs 
+    cost = baserel->rows * PIXEL_COST;
     path = create_foreignscan_path(root, 
                                    baserel, 
                                    baserel->rows, 
-                                   10,                     /* startup cost */
-                                   baserel->rows * 0.001,  /* total cost */
+                                   STARTUP_COST,
+                                   cost,          /* total cost */
                                    pathkeys, 
-                                   NULL,                   /* required outer */
+                                   NULL,          /* required outer */
                                    (List *) plain_path);
+    elog(DEBUG1, "Created plain path with cost %f", cost);
     add_path(baserel, (Path *) path);
     
     /* Create parametrized join paths */
-    // foreach(l, catalog_joins)
-    // {
-    //     RestrictInfo *rinfo = lfirst(l);
-    //     Relids clause_relids = rinfo->clause_relids;
-    //     if (bms_equal_any(clause_relids, considered_relids))
-    //         continue;
+    considered_clauses = list_length(catalog_joins) + list_length(catalog_ec);
+    foreach(l, catalog_joins)
+    {
+        RestrictInfo *rinfo = lfirst(l);
+        Relids clause_relids = rinfo->clause_relids;
+        if (bms_equal_any(clause_relids, considered_relids))
+            continue;
 
-    //     foreach(m, considered_relids)
-    //     {
-    //         Relids oldrelids = (Relids) lfirst(m);
+        foreach(m, considered_relids)
+        {
+            Relids oldrelids = (Relids) lfirst(m);
 
-    //         /*
-    //          * If either is a subset of the other, no new set is possible.
-    //          * This isn't a complete test for redundancy, but it's easy and
-    //          * cheap.  get_join_index_paths will check more carefully if we
-    //          * already generated the same relids set.
-    //          */
-    //         if (bms_subset_compare(clause_relids, oldrelids) != BMS_DIFFERENT)
-    //             continue;
+            /*
+             * If either is a subset of the other, no new set is possible.
+             * This isn't a complete test for redundancy, but it's easy and
+             * cheap.  get_join_index_paths will check more carefully if we
+             * already generated the same relids set.
+             */
+            if (bms_subset_compare(clause_relids, oldrelids) != BMS_DIFFERENT)
+                continue;
 
-    //         // /*
-    //         //  * If this clause was derived from an equivalence class, the
-    //         //  * clause list may contain other clauses derived from the same
-    //         //  * eclass.  We should not consider that combining this clause with
-    //         //  * one of those clauses generates a usefully different
-    //         //  * parameterization; so skip if any clause derived from the same
-    //         //  * eclass would already have been included when using oldrelids.
-    //         //  */
-    //         // if (rinfo->parent_ec && ecAlreadyUsed(rinfo->parent_ec, oldrelids,
-    //         //                                       catalog_join_quals, 
-    //         //                                       catalog_ec)))
-    //         // {
+            /*
+             * If the number of relid sets considered exceeds our heuristic
+             * limit, stop considering combinations of clauses.  We'll still
+             * consider the current clause alone, though (below this loop).
+             */
+            if (list_length(considered_relids) >= 10 * considered_clauses)
+                break;       
+
+            generateJoinPath(root, baserel, fdw_private, pathkeys,
+                             catalog_quals, catalog_joins, 
+                             bms_union(oldrelids, clause_relids),
+                             &considered_relids);
+        }
+
+        generateJoinPath(root, baserel, fdw_private, pathkeys,
+                         catalog_quals, catalog_joins, 
+                         clause_relids,
+                         &considered_relids);
+    }
+
+    /* Derive join paths from EC */
+    forboth(l, catalog_ec, s, catalog_ec_vars)
+    {
+        EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
+        Var *catalog_var = (Var *) lfirst(s);
+        Relids new_relids;
+        if (catalog_var == NULL)
+            continue;
+
+        foreach(m, ec->ec_members)
+        {
+            EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
+            Var *var;
+
+            if (!IsA(em->em_expr, Var))
+                continue;
+
+            var = (Var *) em->em_expr;
+            if (var->varno == baserel->relid)
+                continue;
+
+            foreach(k, considered_relids)
+            {
+                Relids oldrelids = (Relids) lfirst(m);
                 
-    //         //     continue;
-    //         // }
-                
+                if (bms_is_member(var->varno, oldrelids))                
+                    continue;
 
-    //         // /*
-    //         //  * If the number of relid sets considered exceeds our heuristic
-    //         //  * limit, stop considering combinations of clauses.  We'll still
-    //         //  * consider the current clause alone, though (below this loop).
-    //         //  */
-    //         // if (list_length(*considered_relids) >= 10 * considered_clauses)
-    //         //     break;       
+                if (list_length(considered_relids) >= 10 * considered_clauses)
+                    break;
 
-    //         //TODO: consider union relid
-    //     }
+                new_relids = bms_copy(oldrelids);
+                new_relids = bms_add_member(new_relids, var->varno);
+                generateJoinPath(root, baserel, fdw_private, pathkeys,
+                                 catalog_quals, catalog_joins, 
+                                 new_relids, &considered_relids);
+            }
 
-    //     //TODO: consider relids by itself
-    // }
+            new_relids = bms_make_singleton(catalog_var->varno);
+            new_relids = bms_add_member(new_relids, var->varno);
+            generateJoinPath(root, baserel, fdw_private, pathkeys,
+                             catalog_quals, catalog_joins, 
+                             new_relids, &considered_relids);        
+        }
+    }
 }
 
 ForeignScan *
@@ -215,6 +274,9 @@ hvaultGetPlan(PlannerInfo *root,
     List *coltypes;
     AttrNumber attnum;
 
+    elog(DEBUG1, "Selected path quals: %s", 
+         nodeToString(fdw_private->catalog_quals));
+
     /* Prepare catalog query */
     deparse_ctx.table = fdw_private->table;
     deparse_ctx.fdw_expr = NIL;
@@ -231,10 +293,12 @@ hvaultGetPlan(PlannerInfo *root,
         {
             appendStringInfoString(&deparse_ctx.query, " AND ");
         }
-        elog(DEBUG1, "deparsing catalog expression %s", 
+        elog(DEBUG2, "deparsing catalog expression %s", 
              nodeToString(rinfo->clause));
         deparseExpr(rinfo->clause, &deparse_ctx);
     }
+    elog(DEBUG1, "Catalog query: %s", deparse_ctx.query.data);
+
 
     /* Extract clauses that need to be checked externally */
     foreach(l, scan_clauses)
@@ -675,13 +739,14 @@ isCatalogQual(Expr *expr, HvaultTableInfo const *table)
 }
 
 /* Catalog only EC will be put into baserestrictinfo by planner, so here
- * we need to extract only ECs that contain both catalog & outer table vars
+ * we need to extract only ECs that contain both catalog & outer table vars.
+ * We skip patalogic case when one EC contains two different catalog vars
  */
-static bool
+static Var *
 isCatalogJoinEC(EquivalenceClass *ec, HvaultTableInfo const *table)
 {
     ListCell *l;
-    int num_catalog_vars = 0;
+    Var *catalog_var = NULL;
     int num_outer_vars = 0;
 
     foreach(l, ec->ec_members)
@@ -694,11 +759,18 @@ isCatalogJoinEC(EquivalenceClass *ec, HvaultTableInfo const *table)
             {
                 if (isCatalogVar(table->coltypes[var->varattno-1]))
                 {
-                    num_catalog_vars++;
+                    if (catalog_var == NULL)
+                    {
+                        catalog_var = var;
+                    }
+                    else
+                    {
+                        return NULL;
+                    }
                 }
                 else
                 {
-                    return false;
+                    return NULL;
                 }
             }
             else
@@ -713,16 +785,17 @@ isCatalogJoinEC(EquivalenceClass *ec, HvaultTableInfo const *table)
                 return 0;
         }
     }
-    return num_catalog_vars > 0 && num_outer_vars > 0;
+    return num_outer_vars > 0 && catalog_var ? catalog_var : NULL;
 }
 
 static void
-extractCatalogQuals(PlannerInfo *root, 
+extractCatalogQuals(PlannerInfo *root,
                     RelOptInfo *baserel,
                     HvaultTableInfo const *table,
                     List **catalog_quals,
                     List **catalog_joins,
-                    List **catalog_ec)
+                    List **catalog_ec,
+                    List **catalog_ec_vars)
 {
     ListCell *l;
 
@@ -749,9 +822,11 @@ extractCatalogQuals(PlannerInfo *root,
     foreach(l, root->eq_classes)
     {
         EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
-        if (isCatalogJoinEC(ec, table) == 1)
+        Var *catalog_var = isCatalogJoinEC(ec, table);
+        if (catalog_var != NULL)
         {
             *catalog_ec = lappend(*catalog_ec, ec);
+            *catalog_ec_vars = lappend(*catalog_ec_vars, catalog_var);
         }
     }
 }
@@ -769,6 +844,65 @@ bms_equal_any(Relids relids, List *relids_list)
     return false;
 }
 
+static void   
+generateJoinPath(PlannerInfo *root, 
+                 RelOptInfo *baserel, 
+                 HvaultTableInfo const *table,
+                 List *pathkeys,
+                 List *catalog_quals,
+                 List *catalog_joins,
+                 Relids relids,
+                 List **considered_relids)
+{
+    ListCell *l;
+    List *quals = list_copy(catalog_quals);
+    List *ec_quals;
+    Relids req_outer;
+    Selectivity selectivity;
+    double rows;
+    Cost total_cost;
+
+    req_outer = bms_copy(relids);
+    req_outer = bms_del_member(req_outer, baserel->relid);
+    if (bms_is_empty(req_outer))
+    {
+        elog(WARNING, "Considering strange relids");
+        return;
+    }
+
+    foreach(l, catalog_joins)
+    {
+        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+        if (bms_is_subset(rinfo->clause_relids, relids))
+            quals = lappend(quals, rinfo);
+    }
+
+    ec_quals = generate_join_implied_equalities(root, relids, req_outer, 
+                                                baserel);
+    quals = list_concat(quals, ec_quals);
+    selectivity = clauselist_selectivity(root, quals, baserel->relid, 
+                                         JOIN_INNER, NULL);
+    elog(DEBUG1, "selectivity %f", selectivity);
+    rows = baserel->rows * selectivity;
+    total_cost = STARTUP_COST + rows * PIXEL_COST;
+
+    if (add_path_precheck(baserel, STARTUP_COST, total_cost, 
+                          pathkeys, req_outer))
+    {
+        ForeignPath *path;
+        HvaultPathData *path_data = palloc(sizeof(HvaultPathData));
+        path_data->table = table;
+        path_data->catalog_quals = quals;
+        path = create_foreignscan_path(root, baserel, rows, 
+                                       STARTUP_COST, total_cost, pathkeys, 
+                                       req_outer, (List *) path_data);
+        add_path(baserel, (Path *) path);
+        elog(DEBUG1, "Created join path with cost %f", total_cost);
+        elog(DEBUG2, "Created join path with quals %s", nodeToString(quals));
+    }
+
+    *considered_relids = lcons(relids, *considered_relids);
+}
 
 
 /* -----------------------------------

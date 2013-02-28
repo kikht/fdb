@@ -141,7 +141,6 @@ hvaultBegin(ForeignScanState *node, int eflags)
     /* TODO: variable scan size, depending on image scale & user params */
     state->scan_size = 10;
 
-
     state->cursor.catalog = get_table_option(foreigntableid, "catalog");
     if (state->cursor.catalog)
     {
@@ -164,6 +163,7 @@ hvaultBegin(ForeignScanState *node, int eflags)
         }
         state->cursor.file_cursor_name = NULL;
         state->cursor.prep_stmt = NULL;
+        state->cursor.expr_ctx = node->ss.ps.ps_ExprContext;
     }
     else
     {
@@ -372,10 +372,28 @@ hvaultReScan(ForeignScanState *node)
         hdf_file_close(&state->file);
     }
 
-    if (state->cursor.file_cursor_name != NULL)
+    if (state->cursor.catalog)
     {
-        Portal file_cursor = SPI_cursor_find(state->cursor.file_cursor_name);
-        SPI_cursor_close(file_cursor);
+        if (SPI_connect() != SPI_OK_CONNECT)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Can't connect to SPI")));
+            return; /* Will never reach this */
+        }
+    
+        if (state->cursor.file_cursor_name != NULL)
+        {
+            Portal file_cursor = SPI_cursor_find(state->cursor.file_cursor_name);
+            SPI_cursor_close(file_cursor);
+
+        }
+
+        if (SPI_finish() != SPI_OK_FINISH)    
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Can't finish access to SPI")));
+            return; /* Will never reach this */   
+        }
     }
 
     MemoryContextReset(state->file.filememcxt);
@@ -400,13 +418,36 @@ hvaultEnd(ForeignScanState *node)
         hdf_file_close(&state->file);
     }
 
-    if (state->cursor.file_cursor_name != NULL)
+    if (state->cursor.catalog)
     {
-        Portal file_cursor = SPI_cursor_find(state->cursor.file_cursor_name);
-        SPI_cursor_close(file_cursor);
-        MemoryContextDelete(state->cursor.cursormemctx);
-    }
+        if (SPI_connect() != SPI_OK_CONNECT)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Can't connect to SPI")));
+            return; /* Will never reach this */
+        }
+    
+        if (state->cursor.file_cursor_name != NULL)
+        {
+            Portal file_cursor = SPI_cursor_find(state->cursor.file_cursor_name);
+            SPI_cursor_close(file_cursor);
 
+        }
+        if (state->cursor.prep_stmt != NULL)
+        {
+            SPI_freeplan(state->cursor.prep_stmt);
+        }
+        
+        MemoryContextDelete(state->cursor.cursormemctx);
+
+        if (SPI_finish() != SPI_OK_FINISH)    
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Can't finish access to SPI")));
+            return; /* Will never reach this */   
+        }
+    }
+    
     MemoryContextDelete(state->file.filememcxt);
 }
 
@@ -855,6 +896,12 @@ init_catalog_cursor(HvaultCatalogCursor *cursor)
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
                             errmsg("Can't prepare query for catalog %s", 
                                    cursor->catalog)));
+            return; /* Will never reach this */
+        }
+        if (SPI_keepplan(cursor->prep_stmt) != 0)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Can't save prepared plan")));
             return; /* Will never reach this */
         }
 

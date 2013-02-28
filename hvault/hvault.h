@@ -15,9 +15,7 @@
 /* PostGIS */
 #include <liblwgeom.h>
 
-#define TUPLES_PER_FILE (double)(2030*1354)
-#define POINT_SIZE 32
-#define FOOTPRINT_SIZE 120
+
 
 typedef enum HvaultColumnType
 {
