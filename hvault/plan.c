@@ -231,6 +231,8 @@ hvaultGetPlan(PlannerInfo *root,
         {
             appendStringInfoString(&deparse_ctx.query, " AND ");
         }
+        elog(DEBUG1, "deparsing catalog expression %s", 
+             nodeToString(rinfo->clause));
         deparseExpr(rinfo->clause, &deparse_ctx);
     }
 
@@ -669,7 +671,7 @@ isCatalogQualWalker(Node *node, CatalogQualsContext *ctx)
 static inline bool 
 isCatalogQual(Expr *expr, HvaultTableInfo const *table)
 {
-    return !isCatalogQualWalker((Node *) expr, (CatalogQualsContext *) &table);
+    return !isCatalogQualWalker((Node *) expr, (CatalogQualsContext *) table);
 }
 
 /* Catalog only EC will be put into baserestrictinfo by planner, so here
@@ -729,6 +731,8 @@ extractCatalogQuals(PlannerInfo *root,
         RestrictInfo *rinfo = lfirst(l);
         if (isCatalogQual(rinfo->clause, table))
         {
+            elog(DEBUG1, "Detected catalog qual %s", 
+                 nodeToString(rinfo->clause));
             *catalog_quals = lappend(*catalog_quals, rinfo);
         } 
     }
