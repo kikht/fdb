@@ -54,11 +54,12 @@ CREATE OR REPLACE FUNCTION hvault_mass_load_modis_swath
 CREATE TABLE hdf_catalog (
     file_id   serial    PRIMARY KEY,
     filename  text      UNIQUE NOT NULL,
-    starttime timestamp,
-    stoptime  timestamp,
-    footprint geometry,
-    size      int8
+    starttime timestamp NOT NULL,
+    stoptime  timestamp NOT NULL,
+    footprint geometry  NOT NULL,
+    size      int8      NOT NULL
 );
+CREATE INDEX ON hdf_catalog (starttime);
 
 -- SELECT hvault_load_modis_swath(
 --     'hdf_catalog',

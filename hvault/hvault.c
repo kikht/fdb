@@ -878,7 +878,7 @@ init_catalog_cursor(HvaultCatalogCursor *cursor)
 
         query_str = makeStringInfo();
         appendStringInfo(query_str, 
-            "SELECT file_id, filename, starttime FROM %s %s ORDER BY file_id",
+            "SELECT file_id, filename, starttime FROM %s %s",
             cursor->catalog, cursor->catalog_query);
         argtypes = palloc(sizeof(Oid) * nargs);
         cursor->values = palloc(sizeof(Datum) * nargs);

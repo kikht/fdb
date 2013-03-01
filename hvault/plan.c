@@ -71,6 +71,7 @@ typedef struct
     HvaultTableInfo const *table;
     List *catalog_quals;
     List *footprint_quals;
+    char const * sort_qual;
 } HvaultPathData;
 
 typedef struct
@@ -86,7 +87,10 @@ static HvaultColumnType *get_column_types(PlannerInfo *root,
                                           AttrNumber natts);
 static double get_num_files(char *catalog);
 static int    get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs);
-static List  *get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel);
+static void   getSortPathKeys(PlannerInfo const *root,
+                              RelOptInfo const *baserel,
+                              List **pathkeys_list,
+                              List **sort_part);
 static bool   bms_equal_any(Relids relids, List *relids_list);
 static void   getGeometryOpers(HvaultTableInfo *table);
 static void   extractCatalogQuals(PlannerInfo *root,
@@ -99,10 +103,19 @@ static void   extractCatalogQuals(PlannerInfo *root,
                                   List **footprint_quals,
                                   List **footprint_joins);
 static bool   isFootprintQual(Expr *expr, const HvaultTableInfo *table);
+static void   addForeignPaths(PlannerInfo *root, 
+                              RelOptInfo *baserel, 
+                              HvaultTableInfo const *table,
+                              List *pathkeys_list,
+                              List *sort_qual_list,
+                              List *catalog_quals,
+                              List *footprint_quals,
+                              Relids req_outer);
 static void   generateJoinPath(PlannerInfo *root, 
                                RelOptInfo *baserel, 
                                HvaultTableInfo const *table,
-                               List *pathkeys,
+                               List *pathkeys_list,
+                               List *sort_qual_list,
                                List *catalog_quals,
                                List *catalog_joins,
                                List *footprint_quals,
@@ -181,11 +194,9 @@ hvaultGetPaths(PlannerInfo *root,
                Oid foreigntableid)
 {
     HvaultTableInfo *fdw_private = (HvaultTableInfo *) baserel->fdw_private;
-    ForeignPath *path = NULL;
-    List *pathkeys = NIL;  /* represent a pre-sorted result */
-    HvaultPathData *plain_path;
-    Cost cost;
     ListCell *l, *m, *k, *s;
+    List *pathkeys_list = NIL;  
+    List *sort_qual_list = NIL;
     List *catalog_quals = NIL;
     List *catalog_joins = NIL;
     List *catalog_ec = NIL;
@@ -198,8 +209,12 @@ hvaultGetPaths(PlannerInfo *root,
     /* Process pathkeys */
     if (has_useful_pathkeys(root, baserel))
     {
-        /* TODO: time sort */
-        pathkeys = get_sort_pathkeys(root, baserel);
+        getSortPathKeys(root, baserel, &pathkeys_list, &sort_qual_list);
+    }
+    if (list_length(pathkeys_list) == 0)
+    {
+        pathkeys_list = list_make1(NIL);
+        sort_qual_list = list_make1(NULL);
     }
 
     getGeometryOpers(fdw_private);
@@ -208,22 +223,8 @@ hvaultGetPaths(PlannerInfo *root,
                         &footprint_quals, &footprint_joins);
     
     /* Create simple unparametrized path */
-    plain_path = palloc(sizeof(HvaultPathData));
-    plain_path->table = fdw_private;
-    plain_path->catalog_quals = catalog_quals;
-    plain_path->footprint_quals = footprint_quals;
-    // TODO: use catalog quals to better estimate number of rows and costs 
-    cost = baserel->rows * PIXEL_COST;
-    path = create_foreignscan_path(root, 
-                                   baserel, 
-                                   baserel->rows, 
-                                   STARTUP_COST,
-                                   cost,          /* total cost */
-                                   pathkeys, 
-                                   NULL,          /* required outer */
-                                   (List *) plain_path);
-    elog(DEBUG1, "Created plain path with cost %f", cost);
-    add_path(baserel, (Path *) path);
+    addForeignPaths(root, baserel, fdw_private, pathkeys_list, sort_qual_list, 
+                    catalog_quals, footprint_quals, NULL);
     
     /* Create parametrized join paths */
     considered_clauses = list_length(catalog_joins) + list_length(catalog_ec);
@@ -255,14 +256,16 @@ hvaultGetPaths(PlannerInfo *root,
             if (list_length(considered_relids) >= 10 * considered_clauses)
                 break;       
 
-            generateJoinPath(root, baserel, fdw_private, pathkeys,
+            generateJoinPath(root, baserel, fdw_private, 
+                             pathkeys_list, sort_qual_list,
                              catalog_quals, catalog_joins, 
                              footprint_quals, footprint_joins,
                              bms_union(oldrelids, clause_relids),
                              &considered_relids);
         }
 
-        generateJoinPath(root, baserel, fdw_private, pathkeys,
+        generateJoinPath(root, baserel, fdw_private,
+                         pathkeys_list, sort_qual_list,
                          catalog_quals, catalog_joins, 
                          footprint_quals, footprint_joins,
                          clause_relids,
@@ -302,7 +305,8 @@ hvaultGetPaths(PlannerInfo *root,
 
                 new_relids = bms_copy(oldrelids);
                 new_relids = bms_add_member(new_relids, var->varno);
-                generateJoinPath(root, baserel, fdw_private, pathkeys,
+                generateJoinPath(root, baserel, fdw_private,
+                                 pathkeys_list, sort_qual_list,
                                  catalog_quals, catalog_joins, 
                                  footprint_quals, footprint_joins,
                                  new_relids, &considered_relids);
@@ -310,7 +314,8 @@ hvaultGetPaths(PlannerInfo *root,
 
             new_relids = bms_make_singleton(catalog_var->varno);
             new_relids = bms_add_member(new_relids, var->varno);
-            generateJoinPath(root, baserel, fdw_private, pathkeys,
+            generateJoinPath(root, baserel, fdw_private, 
+                             pathkeys_list, sort_qual_list,
                              catalog_quals, catalog_joins, 
                              footprint_quals, footprint_joins,
                              new_relids, &considered_relids);        
@@ -373,6 +378,12 @@ hvaultGetPlan(PlannerInfo *root,
         elog(DEBUG2, "deparsing footprint expression %s", 
              nodeToString(rinfo->clause));
         deparseFootprintExpr(rinfo->clause, &deparse_ctx);
+    }
+
+    if (fdw_private->sort_qual)
+    {
+        appendStringInfoString(&deparse_ctx.query, " ORDER BY ");
+        appendStringInfoString(&deparse_ctx.query, fdw_private->sort_qual);
     }
 
     elog(DEBUG1, "Catalog query: %s", deparse_ctx.query.data);
@@ -641,23 +652,62 @@ get_num_files(char *catalog)
 }
 
 static List *
-get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel)
+makePathKeys(EquivalenceClass *base_ec, 
+             Oid base_opfamily, 
+             int base_strategy,
+             EquivalenceClass *line_ec,
+             EquivalenceClass *sample_ec,
+             Oid intopfamily)
 {
-    List *pathkeys = NIL;
-    ListCell *l, *m;
-    PathKey *fileidx = NULL, *lineidx = NULL, *sampleidx = NULL;
-    Oid opfamily;
-    HvaultTableInfo *fdw_private = (HvaultTableInfo *) baserel->fdw_private;
+    List *result = NIL;
+    PathKey *pk = palloc(sizeof(PathKey));
+    
+    pk->pk_eclass = base_ec;
+    pk->pk_nulls_first = false;
+    pk->pk_strategy = base_strategy;
+    pk->pk_opfamily = base_opfamily;
+    result = lappend(result, pk);
 
-    opfamily = get_opfamily_oid(BTREE_AM_OID, 
-                                list_make1(makeString("integer_ops")), 
-                                false);
-    elog(DEBUG1, "processing pathkeys relid: %d opfam: %d", 
-         baserel->relid, opfamily);
+    if (line_ec)
+    {
+        pk = palloc(sizeof(PathKey));
+        pk->pk_eclass = line_ec;
+        pk->pk_nulls_first = false;
+        pk->pk_strategy = BTLessStrategyNumber;
+        pk->pk_opfamily = intopfamily;
+        result = lappend(result, pk);
+
+        if (sample_ec)
+        {
+            PathKey *pk = palloc(sizeof(PathKey));
+            pk->pk_eclass = sample_ec;
+            pk->pk_nulls_first = false;
+            pk->pk_strategy = BTLessStrategyNumber;
+            pk->pk_opfamily = intopfamily;
+            result = lappend(result, pk);            
+        }
+    }
+
+    return result;
+}
+
+static void   
+getSortPathKeys(PlannerInfo const *root,
+                RelOptInfo const *baserel,
+                List **pathkeys_list,
+                List **sort_part)
+{
+    List *pathkeys;
+    ListCell *l, *m;
+    Oid intopfamily;
+    HvaultTableInfo *fdw_private = (HvaultTableInfo *) baserel->fdw_private;
+    EquivalenceClass *file_ec = NULL, *line_ec = NULL, 
+                     *sample_ec = NULL, *time_ec = NULL;
+
     foreach(l, root->eq_classes)
     {
         EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
-        elog(DEBUG1, "processing EquivalenceClass");
+        elog(DEBUG2, "processing EquivalenceClass %s", nodeToString(ec));
         if (!bms_is_member(baserel->relid, ec->ec_relids))
         {
             elog(DEBUG1, "not my relid");
@@ -667,85 +717,78 @@ get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel)
         foreach(m, ec->ec_members)
         {
             EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
-            elog(DEBUG1, "processing EquivalenceMember %s", 
-                 nodeToString(em));
-            if (IsA(em->em_expr, Var))
+            if (!IsA(em->em_expr, Var))
+                continue;
+        
+            Var *var = (Var *) em->em_expr;
+            if (baserel->relid != var->varno)
+                continue;
+            
+            EquivalenceClass **dest_ec = NULL;
+            Assert(var->varattno < fdw_private->natts);
+            switch(fdw_private->coltypes[var->varattno-1])
             {
-                Var *var = (Var *) em->em_expr;
-                if (baserel->relid == var->varno)
+                case HvaultColumnFileIdx:
+                    dest_ec = &file_ec;
+                    break;
+                case HvaultColumnLineIdx:
+                    dest_ec = &line_ec;
+                    break;
+                case HvaultColumnSampleIdx:
+                    dest_ec = &sample_ec;
+                    break;
+                case HvaultColumnTime:
+                    dest_ec = &time_ec;
+                    break;
+                default:
+                    /* nop */
+                    break;
+            }
+
+            if (dest_ec)
+            {
+                if (*dest_ec)
                 {
-                    PathKey *pathkey = NULL;
-                    Assert(var->varattno < fdw_private->natts);
-                    switch(fdw_private->coltypes[var->varattno-1])
-                    {
-                        case HvaultColumnFileIdx:
-                            if (!fileidx)
-                            {
-                                fileidx = pathkey = 
-                                    (PathKey *) palloc(sizeof(PathKey));
-                            } 
-                            else 
-                            {
-                                elog(WARNING, "duplicate file index column");
-                            }
-                            break;
-                        case HvaultColumnLineIdx:
-                            if (!lineidx)
-                            {
-                                lineidx = pathkey = 
-                                    (PathKey *) palloc(sizeof(PathKey));
-                            } 
-                            else 
-                            {
-                                elog(WARNING, "duplicate line index column");
-                            }
-                            break;
-                        case HvaultColumnSampleIdx:
-                            if (!sampleidx)
-                            {
-                                sampleidx = pathkey = 
-                                    (PathKey *) palloc(sizeof(PathKey));
-                            } 
-                            else 
-                            {
-                                elog(WARNING, "duplicate sample index column");
-                            }
-                            break;
-                        default:
-                            /* nop */
-                            break;
-                    }
-
-                    if (pathkey)
-                    {
-                        pathkey->pk_eclass = ec;
-                        pathkey->pk_nulls_first = false;
-                        pathkey->pk_strategy = BTLessStrategyNumber;
-                        pathkey->pk_opfamily = opfamily;
-                        elog(DEBUG1, "using this pathkey for sort");
-                    }
+                    elog(ERROR, "Duplicate special column");
+                    return; /* Will never reach here */
                 }
+
+                *dest_ec = ec;
             }
         }
     }
 
-    if (fileidx) 
+    intopfamily  = get_opfamily_oid(BTREE_AM_OID, 
+                                    list_make1(makeString("integer_ops")), 
+                                    false);
+    if (file_ec)
     {
-        pathkeys = lappend(pathkeys, fileidx);
-        if (lineidx)
-        {
-            pathkeys = lappend(pathkeys, lineidx);
-            if (sampleidx)
-            {
-                pathkeys = lappend(pathkeys, sampleidx);
-            }
-        }
-        pathkeys = canonicalize_pathkeys(root, pathkeys);
-        pathkeys = truncate_useless_pathkeys(root, baserel, pathkeys);
+        pathkeys = makePathKeys(file_ec, intopfamily, BTLessStrategyNumber, 
+                                line_ec, sample_ec, intopfamily);
+        *pathkeys_list = lappend(*pathkeys_list, pathkeys);
+        *sort_part = lappend(*sort_part, "file_id ASC");
+
+        pathkeys = makePathKeys(file_ec, intopfamily, BTGreaterStrategyNumber, 
+                                line_ec, sample_ec, intopfamily);
+        *pathkeys_list = lappend(*pathkeys_list, pathkeys);
+        *sort_part = lappend(*sort_part, "file_id DESC");
     }
 
-    elog(DEBUG2, "pathkeys: %s", nodeToString(pathkeys));
-    return pathkeys;
+    if (time_ec)
+    {
+        Oid timeopfamily = get_opfamily_oid(
+            BTREE_AM_OID, list_make1(makeString("datetime_ops")), false);    
+
+        pathkeys = makePathKeys(time_ec, timeopfamily, BTLessStrategyNumber, 
+                                line_ec, sample_ec, intopfamily);
+        *pathkeys_list = lappend(*pathkeys_list, pathkeys);
+        *sort_part = lappend(*sort_part, "starttime ASC");
+
+        pathkeys = makePathKeys(time_ec, intopfamily, BTGreaterStrategyNumber, 
+                                line_ec, sample_ec, intopfamily);
+        *pathkeys_list = lappend(*pathkeys_list, pathkeys);
+        *sort_part = lappend(*sort_part, "starttime DESC");
+    }
 }
 
 static inline bool 
@@ -884,13 +927,13 @@ extractCatalogQuals(PlannerInfo *root,
         RestrictInfo *rinfo = lfirst(l);
         if (isCatalogQual(rinfo->clause, table))
         {
-            elog(DEBUG1, "Detected catalog qual %s", 
+            elog(DEBUG2, "Detected catalog qual %s", 
                  nodeToString(rinfo->clause));
             *catalog_quals = lappend(*catalog_quals, rinfo);
         } 
         else if (isFootprintQual(rinfo->clause, table))
         {
-            elog(DEBUG1, "Detected footprint qual %s", 
+            elog(DEBUG2, "Detected footprint qual %s", 
                  nodeToString(rinfo->clause));
             *footprint_quals = lappend(*footprint_quals, rinfo);
         }
@@ -905,7 +948,7 @@ extractCatalogQuals(PlannerInfo *root,
         }
         else if (isFootprintQual(rinfo->clause, table))
         {
-            elog(DEBUG1, "Detected footprint join %s", 
+            elog(DEBUG2, "Detected footprint join %s", 
                  nodeToString(rinfo->clause));
             *footprint_joins = lappend(*footprint_joins, rinfo);
         }
@@ -936,11 +979,58 @@ bms_equal_any(Relids relids, List *relids_list)
     return false;
 }
 
+static void addForeignPaths(PlannerInfo *root, 
+                           RelOptInfo *baserel, 
+                           HvaultTableInfo const *table,
+                           List *pathkeys_list,
+                           List *sort_qual_list,
+                           List *catalog_quals,
+                           List *footprint_quals,
+                           Relids req_outer)
+{
+    List *all_quals;
+    Selectivity selectivity;
+    double rows;
+    Cost total_cost;
+    ListCell *l, *m;
+
+    all_quals = list_copy(catalog_quals);
+    all_quals = list_concat(all_quals, footprint_quals);
+    selectivity = clauselist_selectivity(root, all_quals, baserel->relid, 
+                                         JOIN_INNER, NULL);
+    rows = baserel->rows * selectivity;
+    total_cost = STARTUP_COST + rows * PIXEL_COST;
+    forboth(l, pathkeys_list, m, sort_qual_list)
+    {
+        List *pathkeys = (List *) lfirst(l);
+        char *sort_qual = (char *) lfirst(m);
+
+        if (add_path_precheck(baserel, STARTUP_COST, total_cost, 
+                          pathkeys, req_outer))
+        {
+            ForeignPath *path;
+            HvaultPathData *path_data;
+
+            path_data = palloc(sizeof(HvaultPathData));    
+            path_data->table = table;
+            path_data->catalog_quals = catalog_quals;
+            path_data->footprint_quals = footprint_quals;
+            path_data->sort_qual = sort_qual;
+
+            path = create_foreignscan_path(root, baserel, rows, 
+                                   STARTUP_COST, total_cost, pathkeys, 
+                                   req_outer, (List *) path_data);
+            add_path(baserel, (Path *) path);
+        }
+    }
+}
+
 static void   
 generateJoinPath(PlannerInfo *root, 
                  RelOptInfo *baserel, 
                  HvaultTableInfo const *table,
-                 List *pathkeys,
+                 List *pathkeys_list,
+                 List *sort_qual_list,
                  List *catalog_quals,
                  List *catalog_joins,
                  List *footprint_quals,
@@ -951,12 +1041,8 @@ generateJoinPath(PlannerInfo *root,
     ListCell *l;
     List *quals = list_copy(catalog_quals);
     List *fquals = list_copy(footprint_quals);
-    List *all_quals = NIL;
     List *ec_quals;
     Relids req_outer;
-    Selectivity selectivity;
-    double rows;
-    Cost total_cost;
 
     req_outer = bms_copy(relids);
     req_outer = bms_del_member(req_outer, baserel->relid);
@@ -983,30 +1069,8 @@ generateJoinPath(PlannerInfo *root,
     ec_quals = generate_join_implied_equalities(root, relids, req_outer, 
                                                 baserel);
     quals = list_concat(quals, ec_quals);
-
-    all_quals = list_copy(quals);
-    all_quals = list_concat(all_quals, fquals);
-    selectivity = clauselist_selectivity(root, all_quals, baserel->relid, 
-                                         JOIN_INNER, NULL);
-    elog(DEBUG1, "selectivity %f", selectivity);
-    rows = baserel->rows * selectivity;
-    total_cost = STARTUP_COST + rows * PIXEL_COST;
-
-    if (add_path_precheck(baserel, STARTUP_COST, total_cost, 
-                          pathkeys, req_outer))
-    {
-        ForeignPath *path;
-        HvaultPathData *path_data = palloc(sizeof(HvaultPathData));
-        path_data->table = table;
-        path_data->catalog_quals = quals;
-        path_data->footprint_quals = fquals;
-        path = create_foreignscan_path(root, baserel, rows, 
-                                       STARTUP_COST, total_cost, pathkeys, 
-                                       req_outer, (List *) path_data);
-        add_path(baserel, (Path *) path);
-        elog(DEBUG1, "Created join path with cost %f", total_cost);
-        elog(DEBUG2, "Created join path with quals %s", nodeToString(quals));
-    }
+    addForeignPaths(root, baserel, table, pathkeys_list, sort_qual_list, 
+                    quals, fquals, req_outer);
 
     *considered_relids = lcons(relids, *considered_relids);
 }
