@@ -27,6 +27,12 @@
 #define STARTUP_COST 10
 #define PIXEL_COST 0.001
 
+#define GEOMETRY_OP_QUERY \
+    "SELECT o.oid from pg_opclass c" \
+        " JOIN pg_amop ao ON c.opcfamily = ao.amopfamily" \
+        " JOIN pg_operator o ON ao.amopopr = o.oid " \
+        " WHERE c.opcname = 'gist_geometry_ops_2d' AND o.oprname = $1"
+
 /* 
  * This file includes routines involved in query planning
  */
@@ -39,25 +45,29 @@ static double get_num_files(char *catalog);
 static int    get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs);
 static List  *get_sort_pathkeys(PlannerInfo *root, RelOptInfo *baserel);
 static bool   bms_equal_any(Relids relids, List *relids_list);
+static void   getGeometryOpers(HvaultTableInfo *table);
 static void   extractCatalogQuals(PlannerInfo *root,
                                   RelOptInfo *baserel,
                                   HvaultTableInfo const *table,
                                   List **catalog_quals,
                                   List **catalog_joins,
                                   List **catalog_ec,
-                                  List **catalog_ec_vars);
-static Var   *isCatalogJoinEC(EquivalenceClass *ec, 
-                              HvaultTableInfo const *table);
+                                  List **catalog_ec_vars,
+                                  List **footprint_quals,
+                                  List **footprint_joins);
+static bool   isFootprintQual(Expr *expr, const HvaultTableInfo *table);
 static void   generateJoinPath(PlannerInfo *root, 
                                RelOptInfo *baserel, 
                                HvaultTableInfo const *table,
                                List *pathkeys,
                                List *catalog_quals,
                                List *catalog_joins,
+                               List *footprint_quals,
+                               List *footprint_joins,
                                Relids relids,
                                List **considered_relids);
-
 static void   deparseExpr(Expr *node, HvaultDeparseContext *ctx);
+static void   deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx);
 
 
 /* 
@@ -137,6 +147,8 @@ hvaultGetPaths(PlannerInfo *root,
     List *catalog_joins = NIL;
     List *catalog_ec = NIL;
     List *catalog_ec_vars = NIL;
+    List *footprint_quals = NIL;
+    List *footprint_joins = NIL;
     List *considered_relids = NIL;
     int considered_clauses;
 
@@ -147,13 +159,16 @@ hvaultGetPaths(PlannerInfo *root,
         pathkeys = get_sort_pathkeys(root, baserel);
     }
 
+    getGeometryOpers(fdw_private);
     extractCatalogQuals(root, baserel, fdw_private, &catalog_quals, 
-                        &catalog_joins, &catalog_ec, &catalog_ec_vars);
+                        &catalog_joins, &catalog_ec, &catalog_ec_vars,
+                        &footprint_quals, &footprint_joins);
     
     /* Create simple unparametrized path */
     plain_path = palloc(sizeof(HvaultPathData));
     plain_path->table = fdw_private;
     plain_path->catalog_quals = catalog_quals;
+    plain_path->footprint_quals = footprint_quals;
     // TODO: use catalog quals to better estimate number of rows and costs 
     cost = baserel->rows * PIXEL_COST;
     path = create_foreignscan_path(root, 
@@ -199,12 +214,14 @@ hvaultGetPaths(PlannerInfo *root,
 
             generateJoinPath(root, baserel, fdw_private, pathkeys,
                              catalog_quals, catalog_joins, 
+                             footprint_quals, footprint_joins,
                              bms_union(oldrelids, clause_relids),
                              &considered_relids);
         }
 
         generateJoinPath(root, baserel, fdw_private, pathkeys,
                          catalog_quals, catalog_joins, 
+                         footprint_quals, footprint_joins,
                          clause_relids,
                          &considered_relids);
     }
@@ -244,6 +261,7 @@ hvaultGetPaths(PlannerInfo *root,
                 new_relids = bms_add_member(new_relids, var->varno);
                 generateJoinPath(root, baserel, fdw_private, pathkeys,
                                  catalog_quals, catalog_joins, 
+                                 footprint_quals, footprint_joins,
                                  new_relids, &considered_relids);
             }
 
@@ -251,6 +269,7 @@ hvaultGetPaths(PlannerInfo *root,
             new_relids = bms_add_member(new_relids, var->varno);
             generateJoinPath(root, baserel, fdw_private, pathkeys,
                              catalog_quals, catalog_joins, 
+                             footprint_quals, footprint_joins,
                              new_relids, &considered_relids);        
         }
     }
@@ -297,6 +316,22 @@ hvaultGetPlan(PlannerInfo *root,
              nodeToString(rinfo->clause));
         deparseExpr(rinfo->clause, &deparse_ctx);
     }
+    foreach(l, fdw_private->footprint_quals)
+    {
+        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+        if (first_qual)
+        {
+            appendStringInfoString(&deparse_ctx.query, "WHERE ");
+        }
+        else 
+        {
+            appendStringInfoString(&deparse_ctx.query, " AND ");
+        }
+        elog(DEBUG2, "deparsing footprint expression %s", 
+             nodeToString(rinfo->clause));
+        deparseFootprintExpr(rinfo->clause, &deparse_ctx);
+    }
+
     elog(DEBUG1, "Catalog query: %s", deparse_ctx.query.data);
 
 
@@ -795,7 +830,9 @@ extractCatalogQuals(PlannerInfo *root,
                     List **catalog_quals,
                     List **catalog_joins,
                     List **catalog_ec,
-                    List **catalog_ec_vars)
+                    List **catalog_ec_vars,
+                    List **footprint_quals,
+                    List **footprint_joins)
 {
     ListCell *l;
 
@@ -808,6 +845,12 @@ extractCatalogQuals(PlannerInfo *root,
                  nodeToString(rinfo->clause));
             *catalog_quals = lappend(*catalog_quals, rinfo);
         } 
+        else if (isFootprintQual(rinfo->clause, table))
+        {
+            elog(DEBUG1, "Detected footprint qual %s", 
+                 nodeToString(rinfo->clause));
+            *footprint_quals = lappend(*footprint_quals, rinfo);
+        }
     }
 
     foreach(l, baserel->joininfo)
@@ -816,6 +859,12 @@ extractCatalogQuals(PlannerInfo *root,
         if (isCatalogQual(rinfo->clause, table))
         {
             *catalog_joins = lappend(*catalog_joins, rinfo);
+        }
+        else if (isFootprintQual(rinfo->clause, table))
+        {
+            elog(DEBUG1, "Detected footprint join %s", 
+                 nodeToString(rinfo->clause));
+            *footprint_joins = lappend(*footprint_joins, rinfo);
         }
     }
 
@@ -851,11 +900,15 @@ generateJoinPath(PlannerInfo *root,
                  List *pathkeys,
                  List *catalog_quals,
                  List *catalog_joins,
+                 List *footprint_quals,
+                 List *footprint_joins,
                  Relids relids,
                  List **considered_relids)
 {
     ListCell *l;
     List *quals = list_copy(catalog_quals);
+    List *fquals = list_copy(footprint_quals);
+    List *all_quals = NIL;
     List *ec_quals;
     Relids req_outer;
     Selectivity selectivity;
@@ -877,10 +930,20 @@ generateJoinPath(PlannerInfo *root,
             quals = lappend(quals, rinfo);
     }
 
+    foreach(l, footprint_joins)
+    {
+        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+        if (bms_is_subset(rinfo->clause_relids, relids))
+            fquals = lappend(fquals, rinfo);   
+    }
+
     ec_quals = generate_join_implied_equalities(root, relids, req_outer, 
                                                 baserel);
     quals = list_concat(quals, ec_quals);
-    selectivity = clauselist_selectivity(root, quals, baserel->relid, 
+
+    all_quals = list_copy(quals);
+    all_quals = list_concat(all_quals, fquals);
+    selectivity = clauselist_selectivity(root, all_quals, baserel->relid, 
                                          JOIN_INNER, NULL);
     elog(DEBUG1, "selectivity %f", selectivity);
     rows = baserel->rows * selectivity;
@@ -893,6 +956,7 @@ generateJoinPath(PlannerInfo *root,
         HvaultPathData *path_data = palloc(sizeof(HvaultPathData));
         path_data->table = table;
         path_data->catalog_quals = quals;
+        path_data->footprint_quals = fquals;
         path = create_foreignscan_path(root, baserel, rows, 
                                        STARTUP_COST, total_cost, pathkeys, 
                                        req_outer, (List *) path_data);
@@ -1294,7 +1358,7 @@ deparseNullTest(NullTest *node, HvaultDeparseContext *ctx)
         appendStringInfo(&ctx->query, " IS NOT NULL)");
 }
 
-void
+static void
 deparseExpr(Expr *node, HvaultDeparseContext *ctx)
 {
     if (node == NULL)
@@ -1341,3 +1405,215 @@ deparseExpr(Expr *node, HvaultDeparseContext *ctx)
             break;
     }
 }
+
+/* -----------------------------------
+ *
+ * Footprint expression functions
+ *
+ * -----------------------------------
+ */
+
+static char geomopstr[][4] = {"&&", "&<", "&>", "|&>", "&<|", "<<", ">>", 
+                              "|>>", "<<|", "~", "@", "~="};
+
+static Oid
+getGeometryOpOid(char const *opname, SPIPlanPtr prep_stmt)
+{
+    Datum param[1];
+    Datum val;
+    bool isnull;
+
+    param[0] = CStringGetTextDatum(opname);
+    if (SPI_execute_plan(prep_stmt, param, " ", true, 1) != SPI_OK_SELECT ||
+        SPI_processed != 1 || 
+        SPI_tuptable->tupdesc->natts != 1 ||
+        SPI_tuptable->tupdesc->attrs[0]->atttypid != OIDOID)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't find geometry operator %s", opname)));
+        return InvalidOid; /* Will never reach this */
+    }
+
+    val = heap_getattr(SPI_tuptable->vals[0], 1, 
+                       SPI_tuptable->tupdesc, &isnull);
+    if (isnull)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't find geometry operator %s", opname)));
+        return InvalidOid; /* Will never reach this */            
+    } 
+    return DatumGetObjectId(val);
+}
+
+static void
+getGeometryOpers(HvaultTableInfo *table)
+{
+    SPIPlanPtr prep_stmt;
+    Oid argtypes[1];
+    Oid *opers;
+    char **map;
+    int i;
+    
+
+    if (SPI_connect() != SPI_OK_CONNECT)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                     errmsg("Can't connect to SPI")));
+        return; /* Will never reach this */
+    }
+
+    argtypes[0] = TEXTOID;
+    prep_stmt = SPI_prepare(GEOMETRY_OP_QUERY, 1, argtypes);
+    if (!prep_stmt)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't prepare geometry operator query")));
+        return; /* Will never reach this */
+    }
+
+    opers = table->geomopers;
+    map = table->geomopermap;
+
+    for (i = 0; i < HvaultGeomNumOpers; i++)
+    {
+        opers[i] = getGeometryOpOid(geomopstr[i], prep_stmt);
+    }
+    
+    map[2*HvaultGeomIntersect]       = geomopstr[HvaultGeomIntersect];
+    map[2*HvaultGeomIntersect + 1]   = geomopstr[HvaultGeomIntersect];
+    map[2*HvaultGeomLeft]            = geomopstr[HvaultGeomLeft];
+    map[2*HvaultGeomLeft + 1]        = geomopstr[HvaultGeomRight];
+    map[2*HvaultGeomRight]           = geomopstr[HvaultGeomRight];
+    map[2*HvaultGeomRight + 1]       = geomopstr[HvaultGeomLeft];
+    map[2*HvaultGeomUp]              = geomopstr[HvaultGeomUp];
+    map[2*HvaultGeomUp + 1]          = geomopstr[HvaultGeomDown];
+    map[2*HvaultGeomDown]            = geomopstr[HvaultGeomDown];
+    map[2*HvaultGeomDown + 1]        = geomopstr[HvaultGeomUp];
+    map[2*HvaultGeomStrictLeft]      = geomopstr[HvaultGeomLeft];
+    map[2*HvaultGeomStrictLeft + 1]  = geomopstr[HvaultGeomRight];
+    map[2*HvaultGeomStrictRight]     = geomopstr[HvaultGeomRight];
+    map[2*HvaultGeomStrictRight + 1] = geomopstr[HvaultGeomLeft];
+    map[2*HvaultGeomStrictUp]        = geomopstr[HvaultGeomUp];
+    map[2*HvaultGeomStrictUp + 1]    = geomopstr[HvaultGeomDown];
+    map[2*HvaultGeomStrictDown]      = geomopstr[HvaultGeomDown];
+    map[2*HvaultGeomStrictDown + 1]  = geomopstr[HvaultGeomUp];
+    map[2*HvaultGeomContains]        = geomopstr[HvaultGeomContains];
+    map[2*HvaultGeomContains + 1]    = geomopstr[HvaultGeomIntersect];
+    map[2*HvaultGeomIsContained]     = geomopstr[HvaultGeomIntersect];
+    map[2*HvaultGeomIsContained + 1] = geomopstr[HvaultGeomContains];
+    map[2*HvaultGeomSame]            = geomopstr[HvaultGeomIntersect];
+    map[2*HvaultGeomSame + 1]        = geomopstr[HvaultGeomIntersect];
+
+    if (SPI_finish() != SPI_OK_FINISH)    
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't finish access to SPI")));
+        return; /* Will never reach this */   
+    }
+}
+
+static inline bool
+isGeometryOper(Oid opno, const HvaultTableInfo *table)
+{
+    for(int i = 0; i < HvaultGeomNumOpers; ++i)
+        if (table->geomopers[i] == opno) 
+            return true;
+    return false;
+}
+
+static bool
+isFootprintQual(Expr *expr, const HvaultTableInfo *table)
+{
+    if (IsA(expr, OpExpr))
+    {
+        OpExpr *opexpr = (OpExpr *) expr;
+        Var *var = NULL;
+        Expr *arg = NULL;
+        HvaultColumnType type;
+
+        if (list_length(opexpr->args) != 2)
+            return false;
+
+        if (IsA(linitial(opexpr->args), Var))
+        {
+            var = (Var *) linitial(opexpr->args);
+            arg = lsecond(opexpr->args);
+        }
+        else if (IsA(lsecond(opexpr->args), Var))
+        {
+            var = (Var *) lsecond(opexpr->args);
+            arg = linitial(opexpr->args);
+        }
+        else 
+        {
+            /* We support only simple var = const expressions */
+            return false;
+        }
+
+        if (!isGeometryOper(opexpr->opno, table))
+            return false;
+
+        type = table->coltypes[var->varattno-1];
+        if (type != HvaultColumnPoint && type != HvaultColumnFootprint)
+            return false;
+
+        if (!isCatalogQual(arg, table))
+            return false;
+
+        return true;
+    }
+    return false;
+}
+
+static void
+deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
+{
+    if (IsA(node, OpExpr))
+    {
+        OpExpr *expr = (OpExpr *) node;
+        Expr *arg = NULL;
+        bool varisright = false;
+        int i;
+
+        Assert(list_length(opexpr->args) == 2);
+
+        if (IsA(linitial(expr->args), Var))
+        {
+            arg = lsecond(expr->args);
+            varisright = false;
+        }
+        else if (IsA(lsecond(expr->args), Var))
+        {
+            arg = linitial(expr->args);
+            varisright = true;
+        }
+        else
+        {
+            elog(ERROR, "Can't deparse OpExpr without variable");
+            return; /* Will never reach this */   
+        }
+
+        char *opstr = NULL;
+        for (i = 0; i < HvaultGeomNumOpers; i++)
+        {
+            if (ctx->table->geomopers[i] == expr->opno)
+            {
+                opstr = ctx->table->geomopermap[2*i + varisright];
+                break;
+            }
+        }
+        Assert(opstr);
+
+        appendStringInfoString(&ctx->query, "footprint ");
+        appendStringInfoString(&ctx->query, opstr);
+        appendStringInfoChar(&ctx->query, ' ');
+        deparseExpr(arg, ctx);
+    } 
+    else
+    {
+        elog(ERROR, "unsupported expression type for footprint deparse: %d",
+             (int) nodeTag(node));
+        return; /* Will never reach this */   
+    }
+}
+
