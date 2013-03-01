@@ -37,6 +37,49 @@
  * This file includes routines involved in query planning
  */
 
+typedef enum 
+{  
+    HvaultGeomIntersect = 0,/* &&  */
+    HvaultGeomLeft,         /* &<  */
+    HvaultGeomRight,        /* &>  */
+    HvaultGeomUp,           /* |&> */
+    HvaultGeomDown,         /* &<| */
+    HvaultGeomStrictLeft,   /* <<  */
+    HvaultGeomStrictRight,  /* >>  */
+    HvaultGeomStrictUp,     /* |>> */
+    HvaultGeomStrictDown,   /* <<| */
+    HvaultGeomContains,     /* ~   */
+    HvaultGeomIsContained,  /* @   */
+    HvaultGeomSame,         /* ~=  */
+
+    HvaultGeomNumOpers,
+} HvaultGeomOperator;
+
+typedef struct 
+{
+    Index relid;      
+    AttrNumber natts;
+    HvaultColumnType *coltypes;
+    char *catalog;
+
+    Oid geomopers[HvaultGeomNumOpers];
+    char *geomopermap[HvaultGeomNumOpers*2];
+} HvaultTableInfo;
+
+typedef struct 
+{
+    HvaultTableInfo const *table;
+    List *catalog_quals;
+    List *footprint_quals;
+} HvaultPathData;
+
+typedef struct
+{
+    HvaultTableInfo const *table;
+    List *fdw_expr;
+    StringInfoData query;
+} HvaultDeparseContext;
+
 static HvaultColumnType *get_column_types(PlannerInfo *root, 
                                           RelOptInfo *baserel, 
                                           Oid foreigntableid,
