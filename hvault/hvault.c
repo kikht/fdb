@@ -66,9 +66,16 @@ static void fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum);
 static HvaultSDSBuffer *get_sds_buffer(List **buffers, char *name);
 static void fetch_next_line(HvaultExecState *scan);
 static bool fetch_next_file(HvaultExecState *scan);
-static void init_catalog_cursor(HvaultCatalogCursor *cursor);
+
+static HvaultCatalogCursor *makeCatalogCursor(char const *catalog,
+                                              char const *catalog_filter,
+                                              PlanState *plan,
+                                              List *fdw_expr);
+static void startCatalogCursor(HvaultCatalogCursor *cursor);
 static void initHDFFile(HvaultHDFFile *file, MemoryContext memctx);
 
+
+#define CATALOG_QUERY_PREFIX "SELECT file_id, filename, starttime FROM "
 
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
@@ -122,6 +129,7 @@ hvaultBegin(ForeignScanState *node, int eflags)
     ListCell *l;
     AttrNumber attnum;
     MemoryContext file_cxt;
+    char *catalog;
 
 
     elog(DEBUG1, "in hvaultBegin");
@@ -141,32 +149,21 @@ hvaultBegin(ForeignScanState *node, int eflags)
     /* TODO: variable scan size, depending on image scale & user params */
     state->scan_size = 10;
 
-    state->cursor.catalog = get_table_option(foreigntableid, "catalog");
-    if (state->cursor.catalog)
-    {
-        Value *query;
 
-        state->cursor.cursormemctx = AllocSetContextCreate(
-            node->ss.ps.state->es_query_cxt,
-            "hvault_fdw file cursor data",
-            ALLOCSET_SMALL_INITSIZE,
-            ALLOCSET_SMALL_INITSIZE,
-            ALLOCSET_SMALL_MAXSIZE);
-        query = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
-        state->cursor.catalog_query = strVal(query);
-        state->cursor.fdw_expr = NULL;
-        foreach(l, plan->fdw_exprs)
-        {
-            Expr *expr = (Expr *) lfirst(l);
-            state->cursor.fdw_expr = lappend(state->cursor.fdw_expr,
-                                             ExecInitExpr(expr, &node->ss.ps));
-        }
-        state->cursor.file_cursor_name = NULL;
-        state->cursor.prep_stmt = NULL;
-        state->cursor.expr_ctx = node->ss.ps.ps_ExprContext;
+    initHDFFile(&state->file, node->ss.ps.state->es_query_cxt);
+
+    catalog = get_table_option(foreigntableid, "catalog");
+    if (catalog)
+    {
+        Value *filter;
+        
+        filter = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
+        state->cursor = makeCatalogCursor(catalog, strVal(filter), 
+                                          &node->ss.ps, plan->fdw_exprs);
     }
     else
     {
+        state->cursor = NULL;
         state->file.filename = get_table_option(foreigntableid, "filename");
         if (!state->file.filename)
         {
@@ -175,7 +172,6 @@ hvaultBegin(ForeignScanState *node, int eflags)
         }
     }
 
-    initHDFFile(&state->file, node->ss.ps.state->es_query_cxt);
     
     state->colbuffer = palloc0(sizeof(HvaultSDSBuffer *) * state->natts);
     state->lat = NULL;
@@ -251,7 +247,7 @@ hvaultIterate(ForeignScanState *node)
         fdw_exec_state->cur_line++;
         /* Next file needed? */
         if (fdw_exec_state->cur_line >= fdw_exec_state->file.num_lines) {
-            if (fdw_exec_state->cursor.catalog)
+            if (fdw_exec_state->cursor)
             {
                 if (!fetch_next_file(fdw_exec_state))
                 {
@@ -357,7 +353,7 @@ hvaultReScan(ForeignScanState *node)
         hdf_file_close(&state->file);
     }
 
-    if (state->cursor.catalog)
+    if (state->cursor)
     {
         if (SPI_connect() != SPI_OK_CONNECT)
         {
@@ -366,9 +362,10 @@ hvaultReScan(ForeignScanState *node)
             return; /* Will never reach this */
         }
     
-        if (state->cursor.file_cursor_name != NULL)
+        if (state->cursor->file_cursor_name != NULL)
         {
-            Portal file_cursor = SPI_cursor_find(state->cursor.file_cursor_name);
+            Portal file_cursor = 
+                SPI_cursor_find(state->cursor->file_cursor_name);
             SPI_cursor_close(file_cursor);
 
         }
@@ -383,7 +380,7 @@ hvaultReScan(ForeignScanState *node)
 
     MemoryContextReset(state->file.filememcxt);
 
-    state->cursor.file_cursor_name = NULL;
+    state->cursor->file_cursor_name = NULL;
     state->cur_file = -1;
     state->cur_line = -1;
     state->cur_sample = -1;
@@ -403,7 +400,7 @@ hvaultEnd(ForeignScanState *node)
         hdf_file_close(&state->file);
     }
 
-    if (state->cursor.catalog)
+    if (state->cursor)
     {
         if (SPI_connect() != SPI_OK_CONNECT)
         {
@@ -412,19 +409,18 @@ hvaultEnd(ForeignScanState *node)
             return; /* Will never reach this */
         }
     
-        if (state->cursor.file_cursor_name != NULL)
+        if (state->cursor->file_cursor_name != NULL)
         {
-            Portal file_cursor = SPI_cursor_find(state->cursor.file_cursor_name);
+            Portal file_cursor = 
+                SPI_cursor_find(state->cursor->file_cursor_name);
             SPI_cursor_close(file_cursor);
 
         }
-        if (state->cursor.prep_stmt != NULL)
+        if (state->cursor->prep_stmt != NULL)
         {
-            SPI_freeplan(state->cursor.prep_stmt);
+            SPI_freeplan(state->cursor->prep_stmt);
         }
         
-        MemoryContextDelete(state->cursor.cursormemctx);
-
         if (SPI_finish() != SPI_OK_FINISH)    
         {
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
@@ -771,9 +767,9 @@ fetch_next_file(HvaultExecState *scan)
         return false; /* Will never reach this */
     }
 
-    if (scan->cursor.file_cursor_name == NULL)
+    if (scan->cursor->file_cursor_name == NULL)
     {
-        init_catalog_cursor(&scan->cursor);
+        startCatalogCursor(scan->cursor);
     } 
     else 
     {
@@ -781,7 +777,7 @@ fetch_next_file(HvaultExecState *scan)
         hdf_file_close(&scan->file);
     }
     
-    file_cursor = SPI_cursor_find(scan->cursor.file_cursor_name);
+    file_cursor = SPI_cursor_find(scan->cursor->file_cursor_name);
     Assert(file_cursor);
     do 
     {
@@ -840,8 +836,56 @@ fetch_next_file(HvaultExecState *scan)
     return retval;
 }
 
+static HvaultCatalogCursor *
+makeCatalogCursor(char const *catalog,
+                  char const *catalog_filter,
+                  PlanState *plan,
+                  List *fdw_expr)
+{
+    HvaultCatalogCursor *cursor;
+    StringInfo query;
+    ListCell *l;
+
+    cursor = palloc(sizeof(HvaultCatalogCursor));
+
+    query = makeStringInfo();
+    appendStringInfoString(query, CATALOG_QUERY_PREFIX);
+    appendStringInfoString(query, catalog);
+    appendStringInfoChar(query, ' ');
+    appendStringInfoString(query, catalog_filter);
+
+    cursor->query = query->data;
+    cursor->fdw_expr = NIL;
+    cursor->expr_ctx = NULL;
+    cursor->file_cursor_name = NULL;
+    cursor->prep_stmt = NULL;
+    cursor->argtypes = NULL;
+    cursor->argvals = NULL;
+    cursor->argnulls = NULL;
+
+    if (plan != NULL)
+    {
+        int pos = 0;
+        int nargs = list_length(fdw_expr);
+        cursor->argtypes = palloc(sizeof(Oid) * nargs);
+        cursor->argvals = palloc(sizeof(Datum) * nargs);
+        cursor->argnulls = palloc(sizeof(char) * nargs);
+        cursor->expr_ctx = plan->ps_ExprContext;
+        foreach(l, fdw_expr)
+        {
+            Expr *expr = (Expr *) lfirst(l);
+            cursor->fdw_expr = lappend(cursor->fdw_expr, 
+                                       ExecInitExpr(expr, plan));
+            cursor->argtypes[pos] = exprType((Node *) expr);
+            pos++;
+        }        
+    }
+
+    return cursor;
+}
+
 static void 
-init_catalog_cursor(HvaultCatalogCursor *cursor)
+startCatalogCursor(HvaultCatalogCursor *cursor)
 {
     ListCell *l;
     int nargs, pos;
@@ -853,34 +897,12 @@ init_catalog_cursor(HvaultCatalogCursor *cursor)
     elog(DEBUG1, "file cursor initialization");
     if (cursor->prep_stmt == NULL)
     {
-        MemoryContext oldmemcxt;
-        StringInfo query_str;
-        Oid *argtypes;
-
-        Assert(cursor->cursormemctx);
-        MemoryContextReset(cursor->cursormemctx);
-        oldmemcxt = MemoryContextSwitchTo(cursor->cursormemctx);
-
-        query_str = makeStringInfo();
-        appendStringInfo(query_str, 
-            "SELECT file_id, filename, starttime FROM %s %s",
-            cursor->catalog, cursor->catalog_query);
-        argtypes = palloc(sizeof(Oid) * nargs);
-        cursor->values = palloc(sizeof(Datum) * nargs);
-        cursor->nulls = palloc(sizeof(char) * nargs);
-        pos = 0;
-        foreach(l, cursor->fdw_expr)
-        {
-            ExprState *expr = (ExprState *) lfirst(l);
-            argtypes[pos] = exprType((Node *) expr->expr);
-            pos++;
-        }
-        cursor->prep_stmt = SPI_prepare(query_str->data, nargs, argtypes);
+        cursor->prep_stmt = SPI_prepare(cursor->query, nargs, cursor->argtypes);
         if (!cursor->prep_stmt)
         {
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Can't prepare query for catalog %s", 
-                                   cursor->catalog)));
+                            errmsg("Can't prepare query for catalog: %s", 
+                                   cursor->query)));
             return; /* Will never reach this */
         }
         if (SPI_keepplan(cursor->prep_stmt) != 0)
@@ -889,8 +911,6 @@ init_catalog_cursor(HvaultCatalogCursor *cursor)
                             errmsg("Can't save prepared plan")));
             return; /* Will never reach this */
         }
-
-        MemoryContextSwitchTo(oldmemcxt);
     }
 
     pos = 0;
@@ -899,14 +919,14 @@ init_catalog_cursor(HvaultCatalogCursor *cursor)
         bool isnull;
         Assert(IsA(lfirst(l), ExprState));
         ExprState *expr = (ExprState *) lfirst(l);
-        cursor->values[pos] = ExecEvalExpr(expr, cursor->expr_ctx, 
-                                           &isnull, NULL);
-        cursor->nulls[pos] = isnull ? 'n' : ' ';
+        cursor->argvals[pos] = ExecEvalExpr(expr, cursor->expr_ctx, 
+                                            &isnull, NULL);
+        cursor->argnulls[pos] = isnull ? 'n' : ' ';
         pos++;
     }
 
-    file_cursor = SPI_cursor_open(NULL, cursor->prep_stmt, cursor->values, 
-                                  cursor->nulls, true);
+    file_cursor = SPI_cursor_open(NULL, cursor->prep_stmt, cursor->argvals, 
+                                  cursor->argnulls, true);
     cursor->file_cursor_name = file_cursor->name;
 }
 

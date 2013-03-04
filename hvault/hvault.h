@@ -63,15 +63,15 @@ typedef struct
 
 typedef struct
 {
-    MemoryContext cursormemctx;
-    char const *catalog;       /* Name of catalog table */
-    char const *catalog_query; /* WHERE part of the catalog query */
+    char const *query;         /* Catalog query string */
     List *fdw_expr;      /* List of prepared for computation query expressions*/
     ExprContext *expr_ctx;
-    char const *file_cursor_name; /* Name of catalog query cursor */
+
     SPIPlanPtr prep_stmt;
-    Datum *values;
-    char *nulls;
+    char const *file_cursor_name; /* Name of catalog query cursor */
+    Oid *argtypes;
+    Datum *argvals;
+    char *argnulls;
 } HvaultCatalogCursor;
 
 /*
@@ -86,7 +86,7 @@ typedef struct
     int scan_size;       /* Number of lines in one scan */
 
     /* iteration state */
-    HvaultCatalogCursor cursor;
+    HvaultCatalogCursor *cursor;
     /* file */
     HvaultHDFFile file;           /* current file */
     HvaultSDSBuffer **colbuffer;  /* SDS buffer references for each column */
