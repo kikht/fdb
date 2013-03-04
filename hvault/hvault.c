@@ -44,36 +44,31 @@ hvaultAnalyze(Relation relation,
               BlockNumber *totalpages );
 */
 
-/*
- * Footprint interpolation routines
- */
+/* Initialization functions */
+static HvaultExecState *makeExecState(AttrNumber natts, 
+                                      List *coltypes, 
+                                      MemoryContext memctx);
+static HvaultCatalogCursor *makeCatalogCursor(char const *catalog,
+                                              char const *catalog_filter,
+                                              PlanState *plan,
+                                              List *fdw_expr);
+static void assignSDSBuffers(HvaultExecState *state, 
+                             Oid relid, 
+                             TupleDesc tupdesc);
+static void  check_column_types(List *coltypes, TupleDesc tupdesc);
+
+/* Iteration functions */
+static void startCatalogCursor(HvaultCatalogCursor *cursor);
+static bool fetch_next_file(HvaultExecState *scan);
+static void fetch_next_line(HvaultExecState *scan);
 static void calc_next_footprint(HvaultExecState const *scan, 
                                 HvaultHDFFile *file);
-
-/*
- * Options routines 
- */
-static void  check_column_types(List *coltypes, TupleDesc tupdesc);
-static char *get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc);
-
 /* 
  * Tuple fill utilities
  */
 static void fill_float_val(HvaultExecState const *scan, AttrNumber attnum);
 static void fill_point_val(HvaultExecState const *scan, AttrNumber attnum);
 static void fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum);
-
-static HvaultSDSBuffer *get_sds_buffer(List **buffers, char *name);
-static void fetch_next_line(HvaultExecState *scan);
-static bool fetch_next_file(HvaultExecState *scan);
-
-static HvaultCatalogCursor *makeCatalogCursor(char const *catalog,
-                                              char const *catalog_filter,
-                                              PlanState *plan,
-                                              List *fdw_expr);
-static void startCatalogCursor(HvaultCatalogCursor *cursor);
-static void initHDFFile(HvaultHDFFile *file, MemoryContext memctx);
-
 
 #define CATALOG_QUERY_PREFIX "SELECT file_id, filename, starttime FROM "
 
@@ -126,9 +121,6 @@ hvaultBegin(ForeignScanState *node, int eflags)
     ForeignScan *plan = (ForeignScan *) node->ss.ps.plan;
     List *fdw_plan_private = plan->fdw_private;
     TupleDesc tupdesc = node->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
-    ListCell *l;
-    AttrNumber attnum;
-    MemoryContext file_cxt;
     char *catalog;
 
 
@@ -140,30 +132,20 @@ hvaultBegin(ForeignScanState *node, int eflags)
         return;
 
     Assert(list_length(fdw_plan_private) == HvaultPlanNumParams);
-    state = (HvaultExecState *) palloc(sizeof(HvaultExecState));
-
-    state->natts = tupdesc->natts;
-    state->coltypes = list_nth(fdw_plan_private, HvaultPlanColtypes);
+    state = makeExecState(tupdesc->natts, 
+                          list_nth(fdw_plan_private, HvaultPlanColtypes), 
+                          node->ss.ps.state->es_query_cxt);
     check_column_types(state->coltypes, tupdesc);
-    state->has_footprint = false; /* Initial value, will be detected later */
-    /* TODO: variable scan size, depending on image scale & user params */
-    state->scan_size = 10;
-
-
-    initHDFFile(&state->file, node->ss.ps.state->es_query_cxt);
 
     catalog = get_table_option(foreigntableid, "catalog");
     if (catalog)
     {
-        Value *filter;
-        
-        filter = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
+        Value *filter = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
         state->cursor = makeCatalogCursor(catalog, strVal(filter), 
                                           &node->ss.ps, plan->fdw_exprs);
     }
     else
     {
-        state->cursor = NULL;
         state->file.filename = get_table_option(foreigntableid, "filename");
         if (!state->file.filename)
         {
@@ -172,54 +154,9 @@ hvaultBegin(ForeignScanState *node, int eflags)
         }
     }
 
-    
-    state->colbuffer = palloc0(sizeof(HvaultSDSBuffer *) * state->natts);
-    state->lat = NULL;
-    state->lon = NULL;
     /* fill required sds list & helper pointers */
-    attnum = 0;
-    foreach(l, state->coltypes)
-    {
-        switch(lfirst_int(l)) {
-            case HvaultColumnFloatVal:
-                state->colbuffer[attnum] = get_sds_buffer(
-                    &(state->file.sds), 
-                    get_column_sds(foreigntableid, attnum, tupdesc));
-                break;
-            case HvaultColumnPoint:
-                state->lat = get_sds_buffer(&(state->file.sds), "Latitude");
-                state->lon = get_sds_buffer(&(state->file.sds), "Longitude");
-                break;
-            case HvaultColumnFootprint:
-                state->lat = get_sds_buffer(&(state->file.sds), "Latitude");
-                state->lat->haswindow = true;
-                state->lon = get_sds_buffer(&(state->file.sds), "Longitude");
-                state->lon->haswindow = true;
-                state->has_footprint = true;
-                break;
-        }
-        attnum++;
-    }
-    if (list_length(state->file.sds) == 0)
-    {
-        /* Adding latitude column to get size of files */
-        get_sds_buffer(&(state->file.sds), "Latitude");
-    }
+    assignSDSBuffers(state, foreigntableid, tupdesc);
     elog(DEBUG1, "SDS buffers: %d", list_length(state->file.sds));
-
-    state->file_time = 0;
-    state->cur_file = -1;
-    state->cur_line = -1;
-    state->cur_sample = -1;
-
-    state->values = palloc(sizeof(Datum) * state->natts);
-    state->nulls = palloc(sizeof(bool) * state->natts);
-    state->sds_vals = palloc(sizeof(double) * state->natts);
-
-    state->point = lwpoint_make2d(SRID_UNKNOWN, 0, 0);
-    state->ptarray = ptarray_construct(false, false, 5);
-    state->poly = lwpoly_construct(SRID_UNKNOWN, NULL, 1, &state->ptarray);
-    lwgeom_add_bbox(lwpoly_as_lwgeom(state->poly));
 
     node->fdw_state = state;
 }
@@ -455,28 +392,6 @@ get_table_option(Oid foreigntableid, char *option)
 
 
 
-static char *
-get_column_sds(Oid relid, AttrNumber attnum, TupleDesc tupdesc)
-{
-    List *options;
-    ListCell *o;
-
-    Assert(attnum < tupdesc->natts);
-    options = GetForeignColumnOptions(relid, attnum+1);
-    elog(DEBUG1, "options for att %d: %s", attnum, nodeToString(options));
-    foreach(o, options)
-    {
-        DefElem *def = (DefElem *) lfirst(o);
-        if (strcmp(def->defname, "sds") == 0) {
-            return defGetString(def);
-        }
-    }
-
-    elog(DEBUG1, "Can't find sds option for att: %d relid: %d opts: %s", 
-         attnum, relid, nodeToString(options));
-    return NameStr(tupdesc->attrs[attnum]->attname);;
-}
-
 static void
 check_column_types(List *coltypes, TupleDesc tupdesc)
 {
@@ -538,33 +453,6 @@ check_column_types(List *coltypes, TupleDesc tupdesc)
         }
         attnum++;
     }
-}
-
-static HvaultSDSBuffer *
-get_sds_buffer(List **buffers, char *name)
-{
-    ListCell *l;
-    HvaultSDSBuffer *sds = NULL;
-
-    elog(DEBUG1, "creating buffer for sds %s", name);
-
-    foreach(l, *buffers)
-    {
-        sds = (HvaultSDSBuffer *) lfirst(l);
-        if (strcmp(name, sds->name) == 0) 
-            return sds;
-    }
-
-    sds = palloc(sizeof(HvaultSDSBuffer));
-    sds->prev = NULL;
-    sds->cur = NULL;
-    sds->next = NULL;
-    sds->haswindow = false;
-    sds->id = -1;
-    sds->name = name;
-    sds->type = -1;
-    *buffers = lappend(*buffers, sds);
-    return sds;
 }
 
 static void 
@@ -951,4 +839,120 @@ initHDFFile(HvaultHDFFile *file, MemoryContext memctx)
     file->open_time = 0;
 }
 
+static HvaultExecState *
+makeExecState(AttrNumber natts, List *coltypes, MemoryContext memctx)
+{
+    HvaultExecState *state = palloc(sizeof(HvaultExecState));
 
+    state->natts = natts;
+    state->coltypes = coltypes;
+    state->has_footprint = false;
+    state->scan_size = 10;
+
+    state->cursor = NULL;
+    initHDFFile(&state->file, memctx);
+    state->colbuffer = palloc0(sizeof(HvaultSDSBuffer *) * natts);
+    state->lat = NULL;
+    state->lon = NULL;
+
+    state->file_time = 0;
+    state->cur_file = -1;
+    state->cur_line = -1;
+    state->cur_sample = -1;
+
+    state->values = palloc(sizeof(Datum) * natts);
+    state->nulls = palloc(sizeof(bool) * natts);
+    state->sds_vals = palloc(sizeof(double) * natts);
+
+    state->point = lwpoint_make2d(SRID_UNKNOWN, 0, 0);
+    state->ptarray = ptarray_construct(false, false, 5);
+    state->poly = lwpoly_construct(SRID_UNKNOWN, NULL, 1, &state->ptarray);
+    lwgeom_add_bbox(lwpoly_as_lwgeom(state->poly));
+
+    return state;
+}
+
+static char *
+getColumnSDS(Oid relid, AttrNumber attnum, TupleDesc tupdesc)
+{
+    List *options;
+    ListCell *o;
+
+    Assert(attnum < tupdesc->natts);
+    options = GetForeignColumnOptions(relid, attnum+1);
+    elog(DEBUG1, "options for att %d: %s", attnum, nodeToString(options));
+    foreach(o, options)
+    {
+        DefElem *def = (DefElem *) lfirst(o);
+        if (strcmp(def->defname, "sds") == 0) {
+            return defGetString(def);
+        }
+    }
+
+    elog(DEBUG1, "Can't find sds option for att: %d relid: %d opts: %s", 
+         attnum, relid, nodeToString(options));
+    return NameStr(tupdesc->attrs[attnum]->attname);;
+}
+
+static HvaultSDSBuffer *
+getSDSBuffer(List **buffers, char *name)
+{
+    ListCell *l;
+    HvaultSDSBuffer *sds = NULL;
+
+    elog(DEBUG1, "creating buffer for sds %s", name);
+
+    foreach(l, *buffers)
+    {
+        sds = (HvaultSDSBuffer *) lfirst(l);
+        if (strcmp(name, sds->name) == 0) 
+            return sds;
+    }
+
+    sds = palloc(sizeof(HvaultSDSBuffer));
+    sds->prev = NULL;
+    sds->cur = NULL;
+    sds->next = NULL;
+    sds->haswindow = false;
+    sds->id = -1;
+    sds->name = name;
+    sds->type = -1;
+    *buffers = lappend(*buffers, sds);
+    return sds;
+}
+
+static void
+assignSDSBuffers(HvaultExecState *state, Oid relid, TupleDesc tupdesc)
+{
+    /* fill required sds list & helper pointers */
+    ListCell *l;
+    AttrNumber attnum = 0;
+    foreach(l, state->coltypes)
+    {
+        switch(lfirst_int(l)) {
+            case HvaultColumnFloatVal:
+                state->colbuffer[attnum] = getSDSBuffer(
+                    &(state->file.sds), 
+                    getColumnSDS(relid, attnum, tupdesc));
+                break;
+            case HvaultColumnPoint:
+                state->lat = getSDSBuffer(&(state->file.sds), "Latitude");
+                state->lon = getSDSBuffer(&(state->file.sds), "Longitude");
+                break;
+            case HvaultColumnFootprint:
+                state->lat = getSDSBuffer(&(state->file.sds), "Latitude");
+                state->lat->haswindow = true;
+                state->lon = getSDSBuffer(&(state->file.sds), "Longitude");
+                state->lon->haswindow = true;
+                state->has_footprint = true;
+                break;
+        }
+        attnum++;
+    }
+    if (list_length(state->file.sds) == 0)
+    {
+        /* Adding latitude column to get size of files */
+        getSDSBuffer(&(state->file.sds), "Latitude");
+    }
+    elog(DEBUG1, "SDS buffers: %d", list_length(state->file.sds));
+}
