@@ -67,7 +67,7 @@ static HvaultSDSBuffer *get_sds_buffer(List **buffers, char *name);
 static void fetch_next_line(HvaultExecState *scan);
 static bool fetch_next_file(HvaultExecState *scan);
 static void init_catalog_cursor(HvaultCatalogCursor *cursor);
-
+static void initHDFFile(HvaultHDFFile *file, MemoryContext memctx);
 
 
 /*
@@ -175,22 +175,7 @@ hvaultBegin(ForeignScanState *node, int eflags)
         }
     }
 
-    file_cxt = AllocSetContextCreate(node->ss.ps.state->es_query_cxt,
-                                     "hvault_fdw per-file data",
-                                     ALLOCSET_DEFAULT_MINSIZE,
-                                     ALLOCSET_DEFAULT_INITSIZE,
-                                     ALLOCSET_DEFAULT_MAXSIZE);
-    state->file.filememcxt = file_cxt;
-    state->file.filename = NULL;
-    state->file.sds = NIL;
-    state->file.prevbrdlat = NULL;
-    state->file.prevbrdlon = NULL;
-    state->file.nextbrdlat = NULL;
-    state->file.nextbrdlon = NULL;
-    state->file.sd_id = FAIL;
-    state->file.num_lines = -1;
-    state->file.num_samples = -1;
-    state->file.open_time = 0;
+    initHDFFile(&state->file, node->ss.ps.state->es_query_cxt);
     
     state->colbuffer = palloc0(sizeof(HvaultSDSBuffer *) * state->natts);
     state->lat = NULL;
@@ -923,6 +908,27 @@ init_catalog_cursor(HvaultCatalogCursor *cursor)
     file_cursor = SPI_cursor_open(NULL, cursor->prep_stmt, cursor->values, 
                                   cursor->nulls, true);
     cursor->file_cursor_name = file_cursor->name;
+}
+
+static void
+initHDFFile(HvaultHDFFile *file, MemoryContext memctx)
+{
+    MemoryContext file_cxt = AllocSetContextCreate(memctx,
+                                                   "hvault_fdw per-file data",
+                                                   ALLOCSET_DEFAULT_MINSIZE,
+                                                   ALLOCSET_DEFAULT_INITSIZE,
+                                                   ALLOCSET_DEFAULT_MAXSIZE);
+    file->filememcxt = file_cxt;
+    file->filename = NULL;
+    file->sds = NIL;
+    file->prevbrdlat = NULL;
+    file->prevbrdlon = NULL;
+    file->nextbrdlat = NULL;
+    file->nextbrdlon = NULL;
+    file->sd_id = FAIL;
+    file->num_lines = -1;
+    file->num_samples = -1;
+    file->open_time = 0;
 }
 
 
