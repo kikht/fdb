@@ -15,7 +15,7 @@
 /* PostGIS */
 #include <liblwgeom.h>
 
-
+#define TUPLES_PER_FILE (double)(2030*1354)
 
 typedef enum HvaultColumnType
 {
@@ -109,7 +109,6 @@ typedef struct
 /* hvault.c */
 extern Datum hvault_fdw_validator(PG_FUNCTION_ARGS);
 extern Datum hvault_fdw_handler(PG_FUNCTION_ARGS);
-char *get_table_option(Oid foreigntableid, char *option);
 
 
 /* interpolate.c */
@@ -129,5 +128,15 @@ ForeignScan *hvaultGetPlan(PlannerInfo *root,
                            ForeignPath *best_path,
                            List *tlist, 
                            List *scan_clauses);
+
+/* utils.c */
+char *hvaultGetTableOption(Oid foreigntableid, char *option);
+HvaultColumnType *hvaultGetUsedColumns(PlannerInfo *root, 
+                                       RelOptInfo *baserel, 
+                                       Oid foreigntableid,
+                                       AttrNumber natts);
+List *hvaultGetAllColumns(Relation relation);
+double hvaultGetNumFiles(char *catalog);
+
 
 #endif /* _HVAULT_H_ */

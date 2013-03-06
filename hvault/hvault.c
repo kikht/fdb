@@ -6,6 +6,7 @@
 #include <catalog/pg_type.h>
 #include <commands/defrem.h>
 #include <commands/explain.h>
+#include <commands/vacuum.h>
 #include <executor/spi.h>
 #include <foreign/fdwapi.h>
 #include <foreign/foreign.h>
@@ -37,17 +38,12 @@ static void hvaultBegin(ForeignScanState *node, int eflags);
 static TupleTableSlot *hvaultIterate(ForeignScanState *node);
 static void hvaultReScan(ForeignScanState *node);
 static void hvaultEnd(ForeignScanState *node);
-/*
-static bool 
-hvaultAnalyze(Relation relation, 
-              AcquireSampleRowsFunc *func,
-              BlockNumber *totalpages );
-*/
+static bool hvaultAnalyze(Relation relation, 
+                          AcquireSampleRowsFunc *func,
+                          BlockNumber *totalpages);
 
 /* Initialization functions */
-static HvaultExecState *makeExecState(AttrNumber natts, 
-                                      List *coltypes, 
-                                      MemoryContext memctx);
+static HvaultExecState *makeExecState(List *coltypes, MemoryContext memctx);
 static HvaultCatalogCursor *makeCatalogCursor(char const *catalog,
                                               char const *catalog_filter,
                                               PlanState *plan,
@@ -66,11 +62,15 @@ static void calc_next_footprint(HvaultExecState const *scan,
 /* 
  * Tuple fill utilities
  */
-static void fill_float_val(HvaultExecState const *scan, AttrNumber attnum);
-static void fill_point_val(HvaultExecState const *scan, AttrNumber attnum);
-static void fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum);
+static inline void fill_tuple(HvaultExecState const *scan);
 
 #define CATALOG_QUERY_PREFIX "SELECT file_id, filename, starttime FROM "
+static int acquire_sample_rows(Relation relation,
+                               int elevel,
+                               HeapTuple *rows,
+                               int targrows,
+                               double *totalrows,
+                               double *totaldeadrows);
 
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
@@ -90,7 +90,7 @@ hvault_fdw_handler(PG_FUNCTION_ARGS)
     fdwroutine->IterateForeignScan  = hvaultIterate;
     fdwroutine->ReScanForeignScan   = hvaultReScan;
     fdwroutine->EndForeignScan      = hvaultEnd;
-    /*fdwroutine->AnalyzeForeignTable = hvaultAnalyze;*/
+    fdwroutine->AnalyzeForeignTable = hvaultAnalyze;
 
     PG_RETURN_POINTER(fdwroutine);
 }
@@ -111,6 +111,8 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
        output. The flag fields in es can be used to determine what to print, and
        the state of the ForeignScanState node can be inspected to provide run-
        time statistics in the EXPLAIN ANALYZE case. */    
+
+    /* TODO: print catalog query */
 }
 
 static void 
@@ -132,12 +134,11 @@ hvaultBegin(ForeignScanState *node, int eflags)
         return;
 
     Assert(list_length(fdw_plan_private) == HvaultPlanNumParams);
-    state = makeExecState(tupdesc->natts, 
-                          list_nth(fdw_plan_private, HvaultPlanColtypes), 
+    state = makeExecState(list_nth(fdw_plan_private, HvaultPlanColtypes), 
                           node->ss.ps.state->es_query_cxt);
     check_column_types(state->coltypes, tupdesc);
 
-    catalog = get_table_option(foreigntableid, "catalog");
+    catalog = hvaultGetTableOption(foreigntableid, "catalog");
     if (catalog)
     {
         Value *filter = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
@@ -146,7 +147,8 @@ hvaultBegin(ForeignScanState *node, int eflags)
     }
     else
     {
-        state->file.filename = get_table_option(foreigntableid, "filename");
+        state->file.filename = hvaultGetTableOption(foreigntableid, 
+                                                    "filename");
         if (!state->file.filename)
         {
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
@@ -167,8 +169,6 @@ hvaultIterate(ForeignScanState *node)
     TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
     /*TupleDesc tupdesc = slot->tts_tupleDescriptor;*/
     HvaultExecState *fdw_exec_state = (HvaultExecState *) node->fdw_state;
-    ListCell *l;
-    AttrNumber attnum;
 
     if (fdw_exec_state->cur_line == 0 && fdw_exec_state->cur_sample == 0)
     {
@@ -222,54 +222,7 @@ hvaultIterate(ForeignScanState *node)
     }
 
     /* Fill tuple */
-    attnum = 0;
-    foreach(l, fdw_exec_state->coltypes)
-    {
-        HvaultColumnType type = lfirst_int(l);
-        switch(type)
-        {
-            case HvaultColumnNull:
-                fdw_exec_state->nulls[attnum] = true;
-                break;
-            case HvaultColumnFloatVal:
-                fill_float_val(fdw_exec_state, attnum);
-                break;
-            case HvaultColumnPoint:
-                fill_point_val(fdw_exec_state, attnum);
-                break;
-            case HvaultColumnFootprint:
-                fill_footprint_val(fdw_exec_state, attnum);
-                break;
-            case HvaultColumnFileIdx:
-                fdw_exec_state->values[attnum] = 
-                    Int32GetDatum(fdw_exec_state->cur_file);
-                fdw_exec_state->nulls[attnum] = false;
-                break;
-            case HvaultColumnLineIdx:
-                fdw_exec_state->values[attnum] = 
-                    Int32GetDatum(fdw_exec_state->cur_line);
-                fdw_exec_state->nulls[attnum] = false;
-                break;
-            case HvaultColumnSampleIdx:
-                fdw_exec_state->values[attnum] = 
-                    Int32GetDatum(fdw_exec_state->cur_sample);
-                fdw_exec_state->nulls[attnum] = false;
-                break;
-            case HvaultColumnTime:
-                fdw_exec_state->nulls[attnum] = fdw_exec_state->file_time == 0;
-                if (!fdw_exec_state->nulls[attnum])
-                {
-                    fdw_exec_state->values[attnum] = 
-                        TimestampGetDatum(fdw_exec_state->file_time);
-                }
-                break;
-            default:
-                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                                errmsg("Undefined column type %d", type)));
-                return NULL; /* Will never reach here */
-        }
-        attnum++;
-    }
+    fill_tuple(fdw_exec_state);
     slot->tts_isnull = fdw_exec_state->nulls;
     slot->tts_values = fdw_exec_state->values;
     ExecStoreVirtualTuple(slot);
@@ -369,28 +322,164 @@ hvaultEnd(ForeignScanState *node)
     MemoryContextDelete(state->file.filememcxt);
 }
 
-
-
-
-
-char * 
-get_table_option(Oid foreigntableid, char *option)
+static bool 
+hvaultAnalyze(Relation relation, 
+              AcquireSampleRowsFunc *func,
+              BlockNumber *totalpages)
 {
-    ListCell *l;
-    ForeignTable *foreigntable = GetForeignTable(foreigntableid);
-    foreach(l, foreigntable->options)
+    char *catalog;
+    StringInfo query;
+    Datum val;
+    bool isnull;
+    Oid argtypes[] = {INT4OID};
+    Datum argvals[] = {BLCKSZ};
+
+
+    catalog = hvaultGetTableOption(RelationGetRelid(relation), "catalog");
+    if (catalog == NULL)
+        return false;
+
+    if (SPI_connect() != SPI_OK_CONNECT)
     {
-        DefElem *def = (DefElem *) lfirst(l);
-        if (strcmp(def->defname, option) == 0)
-        {
-            return defGetString(def);
-        }
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't connect to SPI")));
+        return false; /* Will never reach this */
     }
-    elog(DEBUG1, "Can't find table option %s", option);
-    return NULL;
+
+    query = makeStringInfo();
+    appendStringInfo(query, 
+                     "SELECT CAST(((SUM(size) + $1 - 1)/$1) AS float8) FROM %s", 
+                     catalog);
+    if (SPI_execute_with_args(query->data, 1, argtypes, argvals, NULL, true, 1) 
+            != SPI_OK_SELECT ||
+        SPI_processed != 1 ||
+        SPI_tuptable->tupdesc->natts != 1 ||
+        SPI_tuptable->tupdesc->attrs[0]->atttypid != FLOAT8OID)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't select from catalog %s", catalog)));
+        return false; /* Will never reach this */
+    }
+    pfree(query->data);
+    pfree(query);
+
+    val = heap_getattr(SPI_tuptable->vals[0], 1, 
+                       SPI_tuptable->tupdesc, &isnull);
+    if (isnull)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't select from catalog %s", catalog)));
+        return false; /* Will never reach this */            
+    }
+
+
+    *totalpages = DatumGetFloat8(val);
+    if (*totalpages < 1)
+        *totalpages = 1;
+
+    if (SPI_finish() != SPI_OK_FINISH)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't finish access to SPI")));
+        return false; /* Will never reach this */
+    }
+    *func = acquire_sample_rows;
+    return true;
 }
 
 
+
+
+static int
+acquire_sample_rows(Relation relation,
+                    int elevel,
+                    HeapTuple *rows,
+                    int targrows,
+                    double *totalrows,
+                    double *totaldeadrows)
+{
+    char *catalog;
+    HvaultExecState *state;
+    StringInfo filter;
+    List *coltypes;
+    Oid foreigntableid;
+    TupleDesc tupdesc;
+    int num_rows = 0;
+    int num_files;
+    double rowstoskip = -1;
+    double rstate = anl_init_selection_state(targrows);
+    double procrows = 0;
+
+
+    foreigntableid = RelationGetRelid(relation);
+    tupdesc = RelationGetDescr(relation);
+    catalog = hvaultGetTableOption(foreigntableid, "catalog");
+    if (catalog == NULL)
+        return 0;
+
+    coltypes = hvaultGetAllColumns(relation);
+    state = makeExecState(coltypes, CurrentMemoryContext);
+    filter = makeStringInfo();
+    num_files = targrows / 100;
+    if (num_files < 5)
+        num_files = 5;
+    appendStringInfo(filter, "ORDER BY random() LIMIT %d", num_files);
+    state->cursor = makeCatalogCursor(catalog, filter->data, NULL, NIL);
+    
+    check_column_types(state->coltypes, tupdesc);
+    assignSDSBuffers(state, foreigntableid, tupdesc);
+
+    while (fetch_next_file(state))
+    {
+        for (state->cur_line = 0; state->cur_line < state->file.num_lines;
+             state->cur_line++)
+        {
+            vacuum_delay_point();
+
+            fetch_next_line(state);
+            for (state->cur_sample = 0; 
+                 state->cur_sample < state->file.num_samples;
+                 state->cur_sample++)
+            {
+                int pos = -1;
+                procrows += 1;
+                if (num_rows >= targrows)
+                {
+                    if (rowstoskip < 0)
+                        rowstoskip = anl_get_next_S(procrows, targrows, 
+                                                    &rstate);
+
+                    if (rowstoskip <= 0)
+                    {
+                        pos = (int) (anl_random_fract() * targrows);
+                        heap_freetuple(rows[pos]);
+                    }
+                    else
+                    {
+                        pos = -1;
+                    }
+                    rowstoskip -= 1;
+                }
+                else
+                {
+                    pos = num_rows;
+                    num_rows++;
+                }
+
+                if (pos >= 0)
+                {
+                    fill_tuple(state);
+                    rows[pos] = heap_form_tuple(tupdesc, state->values, 
+                                                state->nulls);
+                }
+            }
+        }
+    }
+
+    *totalrows = hvaultGetNumFiles(catalog) * TUPLES_PER_FILE;
+    *totaldeadrows = 0;
+    return num_rows;
+}
 
 static void
 check_column_types(List *coltypes, TupleDesc tupdesc)
@@ -586,7 +675,7 @@ fetch_next_line(HvaultExecState *scan)
     }
 }
 
-static void
+static inline void
 fill_float_val(HvaultExecState const *scan, AttrNumber attnum)
 {
     HvaultSDSBuffer *sds = scan->colbuffer[attnum];
@@ -604,7 +693,7 @@ fill_float_val(HvaultExecState const *scan, AttrNumber attnum)
     }
 }
 
-static void
+static inline void
 fill_point_val(HvaultExecState const *scan, AttrNumber attnum)
 {
     /* This is quite dirty code that uses internal representation of LWPOINT.
@@ -618,7 +707,7 @@ fill_point_val(HvaultExecState const *scan, AttrNumber attnum)
     scan->values[attnum] = PointerGetDatum(ret);
 }
 
-static void
+static inline void
 fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum)
 {
     /* This is quite dirty code that uses internal representation of LWPOLY.
@@ -639,6 +728,56 @@ fill_footprint_val(HvaultExecState const *scan, AttrNumber attnum)
     ret = gserialized_from_lwgeom((LWGEOM *) scan->poly, true, NULL);
     scan->nulls[attnum] = false;
     scan->values[attnum] = PointerGetDatum(ret);   
+}
+
+static inline void 
+fill_tuple(HvaultExecState const *scan)
+{
+    ListCell *l;
+    AttrNumber attnum = 0;
+    foreach(l, scan->coltypes)
+    {
+        HvaultColumnType type = lfirst_int(l);
+        switch(type)
+        {
+            case HvaultColumnNull:
+                scan->nulls[attnum] = true;
+                break;
+            case HvaultColumnFloatVal:
+                fill_float_val(scan, attnum);
+                break;
+            case HvaultColumnPoint:
+                fill_point_val(scan, attnum);
+                break;
+            case HvaultColumnFootprint:
+                fill_footprint_val(scan, attnum);
+                break;
+            case HvaultColumnFileIdx:
+                scan->values[attnum] = Int32GetDatum(scan->cur_file);
+                scan->nulls[attnum] = false;
+                break;
+            case HvaultColumnLineIdx:
+                scan->values[attnum] = Int32GetDatum(scan->cur_line);
+                scan->nulls[attnum] = false;
+                break;
+            case HvaultColumnSampleIdx:
+                scan->values[attnum] = Int32GetDatum(scan->cur_sample);
+                scan->nulls[attnum] = false;
+                break;
+            case HvaultColumnTime:
+                scan->nulls[attnum] = scan->file_time == 0;
+                if (!scan->nulls[attnum])
+                {
+                    scan->values[attnum] = TimestampGetDatum(scan->file_time);
+                }
+                break;
+            default:
+                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                                errmsg("Undefined column type %d", type)));
+                return; /* Will never reach here */
+        }
+        attnum++;
+    }
 }
 
 static bool
@@ -840,18 +979,18 @@ initHDFFile(HvaultHDFFile *file, MemoryContext memctx)
 }
 
 static HvaultExecState *
-makeExecState(AttrNumber natts, List *coltypes, MemoryContext memctx)
+makeExecState(List *coltypes, MemoryContext memctx)
 {
     HvaultExecState *state = palloc(sizeof(HvaultExecState));
 
-    state->natts = natts;
+    state->natts = list_length(coltypes);
     state->coltypes = coltypes;
     state->has_footprint = false;
     state->scan_size = 10;
 
     state->cursor = NULL;
     initHDFFile(&state->file, memctx);
-    state->colbuffer = palloc0(sizeof(HvaultSDSBuffer *) * natts);
+    state->colbuffer = palloc0(sizeof(HvaultSDSBuffer *) * state->natts);
     state->lat = NULL;
     state->lon = NULL;
 
@@ -860,9 +999,9 @@ makeExecState(AttrNumber natts, List *coltypes, MemoryContext memctx)
     state->cur_line = -1;
     state->cur_sample = -1;
 
-    state->values = palloc(sizeof(Datum) * natts);
-    state->nulls = palloc(sizeof(bool) * natts);
-    state->sds_vals = palloc(sizeof(double) * natts);
+    state->values = palloc(sizeof(Datum) * state->natts);
+    state->nulls = palloc(sizeof(bool) * state->natts);
+    state->sds_vals = palloc(sizeof(double) * state->natts);
 
     state->point = lwpoint_make2d(SRID_UNKNOWN, 0, 0);
     state->ptarray = ptarray_construct(false, false, 5);
