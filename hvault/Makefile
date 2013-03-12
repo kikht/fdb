@@ -2,7 +2,7 @@ INC=-I/usr/pgsql-9.2/include/server/
 HDFLIB=-L/usr/lib/hdf -lmfhdf -ldf -ljpeg -lz 
 LIB=-l:/usr/pgsql-9.2/lib/postgis-2.0.so $(HDFLIB)
 	
-CFLAGS = -std=c11 -D_POSIX_C_SOURCE -g -Wall -pedantic 
+CFLAGS = -std=c11 -D_POSIX_C_SOURCE -g -Wall -pedantic -DUSE_ASSERT_CHECKING
 # optimization flags
 # CFLAGS := $(CFLAGS) -O3 -flto -march=native
 

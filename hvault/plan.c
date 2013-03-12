@@ -14,8 +14,10 @@
 #include <optimizer/pathnode.h>
 #include <optimizer/paths.h>
 #include <optimizer/planmain.h>
+#include <tcop/tcopprot.h>
 #include <utils/builtins.h>
 #include <utils/lsyscache.h>
+#include <utils/memutils.h>
 #include <utils/rel.h>
 #include <utils/syscache.h>
 
@@ -38,6 +40,8 @@
 
 typedef enum 
 {  
+    HvaultGeomInvalidOp = -1,
+
     HvaultGeomIntersect = 0,/* &&  */
     HvaultGeomLeft,         /* &<  */
     HvaultGeomRight,        /* &>  */
@@ -69,8 +73,9 @@ typedef struct
 {
     HvaultTableInfo const *table;
     List *catalog_quals;
-    List *footprint_quals;
-    char const * sort_qual;
+    List *fdw_expr;
+    char const * filter;
+    char const * sort;
 } HvaultPathData;
 
 typedef struct
@@ -78,47 +83,48 @@ typedef struct
     HvaultTableInfo const *table;
     List *fdw_expr;
     StringInfoData query;
+    bool first_qual;
 } HvaultDeparseContext;
 
-static int    get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs);
-static void   getSortPathKeys(PlannerInfo const *root,
-                              RelOptInfo const *baserel,
-                              List **pathkeys_list,
-                              List **sort_part);
-static bool   bms_equal_any(Relids relids, List *relids_list);
-static void   getGeometryOpers(HvaultTableInfo *table);
-static void   extractCatalogQuals(PlannerInfo *root,
-                                  RelOptInfo *baserel,
-                                  HvaultTableInfo const *table,
-                                  List **catalog_quals,
-                                  List **catalog_joins,
-                                  List **catalog_ec,
-                                  List **catalog_ec_vars,
-                                  List **footprint_quals,
-                                  List **footprint_joins);
-static bool   isFootprintQual(Expr *expr, const HvaultTableInfo *table);
-static void   addForeignPaths(PlannerInfo *root, 
-                              RelOptInfo *baserel, 
-                              HvaultTableInfo const *table,
-                              List *pathkeys_list,
-                              List *sort_qual_list,
-                              List *catalog_quals,
-                              List *footprint_quals,
-                              Relids req_outer);
-static void   generateJoinPath(PlannerInfo *root, 
-                               RelOptInfo *baserel, 
-                               HvaultTableInfo const *table,
-                               List *pathkeys_list,
-                               List *sort_qual_list,
-                               List *catalog_quals,
-                               List *catalog_joins,
-                               List *footprint_quals,
-                               List *footprint_joins,
-                               Relids relids,
-                               List **considered_relids);
-static void   deparseExpr(Expr *node, HvaultDeparseContext *ctx);
-static void   deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx);
-
+static int  get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs);
+static void getSortPathKeys(PlannerInfo const *root,
+                            RelOptInfo const *baserel,
+                            List **pathkeys_list,
+                            List **sort_part);
+static bool bms_equal_any(Relids relids, List *relids_list);
+static void getGeometryOpers(HvaultTableInfo *table);
+static void extractCatalogQuals(PlannerInfo *root,
+                                RelOptInfo *baserel,
+                                HvaultTableInfo const *table,
+                                List **catalog_quals,
+                                List **catalog_joins,
+                                List **catalog_ec,
+                                List **catalog_ec_vars,
+                                List **footprint_quals,
+                                List **footprint_joins);
+static bool isFootprintQual(Expr *expr, const HvaultTableInfo *table);
+static void addForeignPaths(PlannerInfo *root, 
+                            RelOptInfo *baserel, 
+                            HvaultTableInfo const *table,
+                            List *pathkeys_list,
+                            List *sort_qual_list,
+                            List *catalog_quals,
+                            List *footprint_quals,
+                            Relids req_outer);
+static void generateJoinPath(PlannerInfo *root, 
+                             RelOptInfo *baserel, 
+                             HvaultTableInfo const *table,
+                             List *pathkeys_list,
+                             List *sort_qual_list,
+                             List *catalog_quals,
+                             List *catalog_joins,
+                             List *footprint_quals,
+                             List *footprint_joins,
+                             Relids relids,
+                             List **considered_relids);
+static void deparseExpr(Expr *node, HvaultDeparseContext *ctx);
+static void deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx);
+static void addDeparseItem(HvaultDeparseContext *ctx);
 
 /* 
  * This function is intened to provide first estimate of a size of relation
@@ -170,7 +176,7 @@ hvaultGetRelSize(PlannerInfo *root,
 
     // TODO: Use constant catalog quals for better estimate
     num_files = hvaultGetNumFiles(fdw_private->catalog);
-    tuples_per_file = TUPLES_PER_FILE;
+    tuples_per_file = HVAULT_TUPLES_PER_FILE;
     scale_factor = 1; /* 4 for 500m, 16 for 250m */
 
     baserel->width = get_row_width(fdw_private->coltypes, fdw_private->natts);
@@ -330,57 +336,23 @@ hvaultGetPlan(PlannerInfo *root,
     List *rest_clauses = NIL; /* clauses that must be checked externally */
     List *fdw_plan_private = NIL;
     ListCell *l;
-    HvaultDeparseContext deparse_ctx;
-    bool first_qual;
     List *coltypes;
     AttrNumber attnum;
+    StringInfoData query;
 
     elog(DEBUG1, "Selected path quals: %s", 
          nodeToString(fdw_private->catalog_quals));
 
     /* Prepare catalog query */
-    deparse_ctx.table = fdw_private->table;
-    deparse_ctx.fdw_expr = NIL;
-    initStringInfo(&deparse_ctx.query);
-    first_qual = true;
-    foreach(l, fdw_private->catalog_quals)
-    {   
-        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        if (first_qual)
-        {
-            appendStringInfoString(&deparse_ctx.query, "WHERE ");
-        }
-        else 
-        {
-            appendStringInfoString(&deparse_ctx.query, " AND ");
-        }
-        elog(DEBUG2, "deparsing catalog expression %s", 
-             nodeToString(rinfo->clause));
-        deparseExpr(rinfo->clause, &deparse_ctx);
-    }
-    foreach(l, fdw_private->footprint_quals)
+    initStringInfo(&query);
+    appendStringInfoString(&query, fdw_private->filter);
+    if (fdw_private->sort)
     {
-        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        if (first_qual)
-        {
-            appendStringInfoString(&deparse_ctx.query, "WHERE ");
-        }
-        else 
-        {
-            appendStringInfoString(&deparse_ctx.query, " AND ");
-        }
-        elog(DEBUG2, "deparsing footprint expression %s", 
-             nodeToString(rinfo->clause));
-        deparseFootprintExpr(rinfo->clause, &deparse_ctx);
+        appendStringInfoString(&query, " ORDER BY ");
+        appendStringInfoString(&query, fdw_private->sort);
     }
 
-    if (fdw_private->sort_qual)
-    {
-        appendStringInfoString(&deparse_ctx.query, " ORDER BY ");
-        appendStringInfoString(&deparse_ctx.query, fdw_private->sort_qual);
-    }
-
-    elog(DEBUG1, "Catalog query: %s", deparse_ctx.query.data);
+    elog(DEBUG1, "Catalog query: %s", query.data);
 
 
     /* Extract clauses that need to be checked externally */
@@ -410,12 +382,11 @@ hvaultGetPlan(PlannerInfo *root,
     {
         coltypes = lappend_int(coltypes, fdw_private->table->coltypes[attnum]);
     }
-    fdw_plan_private = lappend(fdw_plan_private, 
-                               makeString(deparse_ctx.query.data));
+    fdw_plan_private = lappend(fdw_plan_private, makeString(query.data));
     fdw_plan_private = lappend(fdw_plan_private, coltypes);
 
     return make_foreignscan(tlist, rest_clauses, baserel->relid, 
-                            deparse_ctx.fdw_expr, fdw_plan_private);
+                            fdw_private->fdw_expr, fdw_plan_private);
 }
 
 static int
@@ -463,8 +434,7 @@ makePathKeys(EquivalenceClass *base_ec,
              Oid intopfamily)
 {
     List *result = NIL;
-    PathKey *pk = palloc(sizeof(PathKey));
-    
+    PathKey *pk = makeNode(PathKey);
     pk->pk_eclass = base_ec;
     pk->pk_nulls_first = false;
     pk->pk_strategy = base_strategy;
@@ -473,7 +443,7 @@ makePathKeys(EquivalenceClass *base_ec,
 
     if (line_ec)
     {
-        pk = palloc(sizeof(PathKey));
+        PathKey *pk = makeNode(PathKey);
         pk->pk_eclass = line_ec;
         pk->pk_nulls_first = false;
         pk->pk_strategy = BTLessStrategyNumber;
@@ -482,7 +452,7 @@ makePathKeys(EquivalenceClass *base_ec,
 
         if (sample_ec)
         {
-            PathKey *pk = palloc(sizeof(PathKey));
+            PathKey *pk = makeNode(PathKey);
             pk->pk_eclass = sample_ec;
             pk->pk_nulls_first = false;
             pk->pk_strategy = BTLessStrategyNumber;
@@ -782,6 +752,46 @@ bms_equal_any(Relids relids, List *relids_list)
     return false;
 }
 
+static void
+getQueryCosts(char const *query,
+              int nargs, 
+              Oid *argtypes, 
+              Cost *startup_cost,
+              Cost *total_cost,
+              double *plan_rows,
+              int *plan_width)
+{
+    MemoryContext oldmemctx, memctx;
+    List *parsetree, *stmt_list;
+    PlannedStmt *plan;
+
+    memctx = AllocSetContextCreate(CurrentMemoryContext, 
+                                   "hvaultQueryCosts context", 
+                                   ALLOCSET_DEFAULT_MINSIZE,
+                                   ALLOCSET_DEFAULT_INITSIZE,
+                                   ALLOCSET_DEFAULT_MAXSIZE);
+    oldmemctx = MemoryContextSwitchTo(memctx);
+
+    parsetree = pg_parse_query(query);
+    Assert(list_length(parsetree) == 1);
+    stmt_list = pg_analyze_and_rewrite(linitial(parsetree), 
+                                       query, 
+                                       argtypes, 
+                                       nargs);
+    Assert(list_length(stmt_list) == 1);
+    plan = pg_plan_query((Query *) linitial(stmt_list), 
+                         CURSOR_OPT_GENERIC_PLAN, 
+                         NULL);
+
+    *startup_cost = plan->planTree->startup_cost;
+    *total_cost = plan->planTree->total_cost;
+    *plan_rows = plan->planTree->plan_rows;
+    *plan_width = plan->planTree->plan_width;
+
+    MemoryContextSwitchTo(oldmemctx);
+    MemoryContextDelete(memctx);
+}
+
 static void addForeignPaths(PlannerInfo *root, 
                            RelOptInfo *baserel, 
                            HvaultTableInfo const *table,
@@ -791,25 +801,68 @@ static void addForeignPaths(PlannerInfo *root,
                            List *footprint_quals,
                            Relids req_outer)
 {
-    List *all_quals;
-    Selectivity selectivity;
     double rows;
-    Cost total_cost;
+    Cost startup_cost, total_cost;
     ListCell *l, *m;
+    HvaultDeparseContext deparse_ctx;
+    Cost catmin, catmax;
+    double catrows;
+    int catwidth;
+    int nargs, argno;
+    Oid *argtypes;
 
-    all_quals = list_copy(catalog_quals);
-    all_quals = list_concat(all_quals, footprint_quals);
-    selectivity = clauselist_selectivity(root, all_quals, baserel->relid, 
-                                         JOIN_INNER, NULL);
-    rows = baserel->rows * selectivity;
-    total_cost = STARTUP_COST + rows * PIXEL_COST;
+    /* Prepare catalog query */
+    deparse_ctx.table = table;
+    deparse_ctx.fdw_expr = NIL;
+    deparse_ctx.first_qual = true;
+    initStringInfo(&deparse_ctx.query);
+    
+    appendStringInfoString(&deparse_ctx.query, HVAULT_CATALOG_QUERY_PREFIX);
+    appendStringInfoString(&deparse_ctx.query, table->catalog);
+    appendStringInfoChar(&deparse_ctx.query, ' ');
+
+    foreach(l, catalog_quals)
+    {   
+        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+        addDeparseItem(&deparse_ctx);
+        deparseExpr(rinfo->clause, &deparse_ctx);
+    }
+    foreach(l, footprint_quals)
+    {
+        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+        addDeparseItem(&deparse_ctx);
+        deparseFootprintExpr(rinfo->clause, &deparse_ctx);
+    }
+
+    nargs = list_length(deparse_ctx.fdw_expr);
+    argtypes = palloc(sizeof(Oid) * nargs);
+    argno = 0;
+    foreach(l, deparse_ctx.fdw_expr)
+    {
+        Node *expr = (Node *) lfirst(l);
+        argtypes[argno] = exprType(expr);
+        argno++;
+    }
+    getQueryCosts(deparse_ctx.query.data, 
+                  nargs, 
+                  argtypes, 
+                  &catmin, 
+                  &catmax, 
+                  &catrows, 
+                  &catwidth);
+    pfree(argtypes);
+    argtypes = NULL;
+
+    rows = catrows * HVAULT_TUPLES_PER_FILE;
+    startup_cost = catmin + STARTUP_COST;
+    total_cost = catmax + STARTUP_COST + rows * PIXEL_COST;
     forboth(l, pathkeys_list, m, sort_qual_list)
     {
         List *pathkeys = (List *) lfirst(l);
         char *sort_qual = (char *) lfirst(m);
 
-        if (add_path_precheck(baserel, STARTUP_COST, total_cost, 
-                          pathkeys, req_outer))
+        if (add_path_precheck(baserel, startup_cost, total_cost, 
+                              pathkeys, req_outer))
         {
             ForeignPath *path;
             HvaultPathData *path_data;
@@ -817,12 +870,13 @@ static void addForeignPaths(PlannerInfo *root,
             path_data = palloc(sizeof(HvaultPathData));    
             path_data->table = table;
             path_data->catalog_quals = catalog_quals;
-            path_data->footprint_quals = footprint_quals;
-            path_data->sort_qual = sort_qual;
+            path_data->filter = deparse_ctx.query.data;
+            path_data->sort = sort_qual;
+            path_data->fdw_expr = deparse_ctx.fdw_expr;
 
             path = create_foreignscan_path(root, baserel, rows, 
-                                   STARTUP_COST, total_cost, pathkeys, 
-                                   req_outer, (List *) path_data);
+                                           startup_cost, total_cost, pathkeys, 
+                                           req_outer, (List *) path_data);
             add_path(baserel, (Path *) path);
         }
     }
@@ -930,7 +984,7 @@ deparseVar(Var *node, HvaultDeparseContext *ctx)
         char *colname = NULL;
         
         Assert(node->varattno > 0);
-        Assert(node->varattno <= ctx->natts);
+        Assert(node->varattno <= ctx->table->natts);
 
         type = ctx->table->coltypes[node->varattno-1];
         switch(type)
@@ -1316,6 +1370,20 @@ deparseExpr(Expr *node, HvaultDeparseContext *ctx)
     }
 }
 
+static void
+addDeparseItem(HvaultDeparseContext *ctx)
+{
+    if (ctx->first_qual)
+    {
+        appendStringInfoString(&ctx->query, "WHERE ");
+        ctx->first_qual = false;
+    }
+    else 
+    {
+        appendStringInfoString(&ctx->query, " AND ");
+    }
+}
+
 /* -----------------------------------
  *
  * Footprint expression functions
@@ -1363,7 +1431,6 @@ getGeometryOpers(HvaultTableInfo *table)
     Oid *opers;
     char **map;
     int i;
-    
 
     if (SPI_connect() != SPI_OK_CONNECT)
     {
@@ -1371,7 +1438,7 @@ getGeometryOpers(HvaultTableInfo *table)
                      errmsg("Can't connect to SPI")));
         return; /* Will never reach this */
     }
-
+    
     argtypes[0] = TEXTOID;
     prep_stmt = SPI_prepare(GEOMETRY_OP_QUERY, 1, argtypes);
     if (!prep_stmt)
@@ -1422,96 +1489,96 @@ getGeometryOpers(HvaultTableInfo *table)
     }
 }
 
-static inline bool
-isGeometryOper(Oid opno, const HvaultTableInfo *table)
+static inline HvaultGeomOperator
+getGeometryOper(Oid opno, const HvaultTableInfo *table)
 {
     for(int i = 0; i < HvaultGeomNumOpers; ++i)
         if (table->geomopers[i] == opno) 
-            return true;
-    return false;
+            return i;
+    return HvaultGeomInvalidOp;
 }
+
+static bool
+isFootprintOp(Expr *expr, 
+              const HvaultTableInfo *table, 
+              Var **var, 
+              Expr **arg, 
+              bool *varisright,
+              HvaultGeomOperator *oper,
+              HvaultColumnType *coltype)
+{
+    if (!IsA(expr, OpExpr))
+        return false;
+
+    OpExpr *opexpr = (OpExpr *) expr;
+
+    if (list_length(opexpr->args) != 2)
+        return false;
+
+    if (IsA(linitial(opexpr->args), Var))
+    {
+        *var = (Var *) linitial(opexpr->args);
+        *arg = lsecond(opexpr->args);
+        *varisright = false;
+    }
+    else if (IsA(lsecond(opexpr->args), Var))
+    {
+        *var = (Var *) lsecond(opexpr->args);
+        *arg = linitial(opexpr->args);
+        *varisright = true;
+    }
+    else 
+    {
+        /* We support only simple var = const expressions */
+        return false;
+    }
+
+    *oper = getGeometryOper(opexpr->opno, table);
+    if (*oper == HvaultGeomInvalidOp)
+        return false;
+
+    *coltype = table->coltypes[(*var)->varattno-1];
+    if (*coltype != HvaultColumnPoint && *coltype != HvaultColumnFootprint)
+        return false;
+
+    if (!isCatalogQual(*arg, table))
+        return false;
+
+    return true;
+}
+
+// static bool isFootprintNegOp(Expr *expr, const HvaultTableInfo *table)
+// {
+//     //TODO:
+// }
 
 static bool
 isFootprintQual(Expr *expr, const HvaultTableInfo *table)
 {
-    if (IsA(expr, OpExpr))
-    {
-        OpExpr *opexpr = (OpExpr *) expr;
-        Var *var = NULL;
-        Expr *arg = NULL;
-        HvaultColumnType type;
+    Var *var = NULL;
+    Expr *arg = NULL;
+    bool varisright;
+    HvaultColumnType type;
+    HvaultGeomOperator oper;
 
-        if (list_length(opexpr->args) != 2)
-            return false;
-
-        if (IsA(linitial(opexpr->args), Var))
-        {
-            var = (Var *) linitial(opexpr->args);
-            arg = lsecond(opexpr->args);
-        }
-        else if (IsA(lsecond(opexpr->args), Var))
-        {
-            var = (Var *) lsecond(opexpr->args);
-            arg = linitial(opexpr->args);
-        }
-        else 
-        {
-            /* We support only simple var = const expressions */
-            return false;
-        }
-
-        if (!isGeometryOper(opexpr->opno, table))
-            return false;
-
-        type = table->coltypes[var->varattno-1];
-        if (type != HvaultColumnPoint && type != HvaultColumnFootprint)
-            return false;
-
-        if (!isCatalogQual(arg, table))
-            return false;
-
+    if (isFootprintOp(expr, table, &var, &arg, &varisright, &oper, &type))
         return true;
-    }
+
     return false;
 }
 
 static void
 deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
 {
-    if (IsA(node, OpExpr))
+    Var *var = NULL;
+    Expr *arg = NULL;
+    bool varisright;
+    HvaultColumnType type;
+    HvaultGeomOperator oper;
+
+    if (isFootprintOp(node, ctx->table, &var, &arg, &varisright, &oper, &type))
     {
-        OpExpr *expr = (OpExpr *) node;
-        Expr *arg = NULL;
-        bool varisright = false;
-        int i;
-
-        Assert(list_length(opexpr->args) == 2);
-
-        if (IsA(linitial(expr->args), Var))
-        {
-            arg = lsecond(expr->args);
-            varisright = false;
-        }
-        else if (IsA(lsecond(expr->args), Var))
-        {
-            arg = linitial(expr->args);
-            varisright = true;
-        }
-        else
-        {
-            elog(ERROR, "Can't deparse OpExpr without variable");
-            return; /* Will never reach this */   
-        }
-
-        char *opstr = NULL;
-        for (i = 0; i < HvaultGeomNumOpers; i++)
-        {
-            if (ctx->table->geomopers[i] == expr->opno)
-            {
-                opstr = ctx->table->geomopermap[2*i + varisright];
-                break;
-            }
-        }
+        char *opstr = ctx->table->geomopermap[2*oper + varisright];
         Assert(opstr);
 
         appendStringInfoString(&ctx->query, "footprint ");

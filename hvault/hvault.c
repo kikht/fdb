@@ -44,8 +44,7 @@ static bool hvaultAnalyze(Relation relation,
 
 /* Initialization functions */
 static HvaultExecState *makeExecState(List *coltypes, MemoryContext memctx);
-static HvaultCatalogCursor *makeCatalogCursor(char const *catalog,
-                                              char const *catalog_filter,
+static HvaultCatalogCursor *makeCatalogCursor(char const *query,
                                               PlanState *plan,
                                               List *fdw_expr);
 static void assignSDSBuffers(HvaultExecState *state, 
@@ -64,7 +63,6 @@ static void calc_next_footprint(HvaultExecState const *scan,
  */
 static inline void fill_tuple(HvaultExecState const *scan);
 
-#define CATALOG_QUERY_PREFIX "SELECT file_id, filename, starttime FROM "
 static int acquire_sample_rows(Relation relation,
                                int elevel,
                                HeapTuple *rows,
@@ -112,7 +110,21 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
        the state of the ForeignScanState node can be inspected to provide run-
        time statistics in the EXPLAIN ANALYZE case. */    
 
-    /* TODO: print catalog query */
+    ForeignScan *plan = (ForeignScan *) node->ss.ps.plan;
+    List *fdw_plan_private = plan->fdw_private;
+    Oid foreigntableid = RelationGetRelid(node->ss.ss_currentRelation);
+    char *catalog = hvaultGetTableOption(foreigntableid, "catalog");
+    if (catalog)
+    {
+        Value *query = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
+        ExplainPropertyText("Catalog query", strVal(query), es);
+    }
+    else
+    {
+        char *filename = hvaultGetTableOption(foreigntableid, "filename");
+        if (filename != NULL)
+            ExplainPropertyText("Single file", filename, es);
+    }
 }
 
 static void 
@@ -141,9 +153,10 @@ hvaultBegin(ForeignScanState *node, int eflags)
     catalog = hvaultGetTableOption(foreigntableid, "catalog");
     if (catalog)
     {
-        Value *filter = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
-        state->cursor = makeCatalogCursor(catalog, strVal(filter), 
-                                          &node->ss.ps, plan->fdw_exprs);
+        Value *query = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
+        state->cursor = makeCatalogCursor(strVal(query), 
+                                          &node->ss.ps, 
+                                          plan->fdw_exprs);
     }
     else
     {
@@ -266,11 +279,12 @@ hvaultReScan(ForeignScanState *node)
                             errmsg("Can't finish access to SPI")));
             return; /* Will never reach this */   
         }
+
+        state->cursor->file_cursor_name = NULL;
     }
 
     MemoryContextReset(state->file.filememcxt);
 
-    state->cursor->file_cursor_name = NULL;
     state->cur_file = -1;
     state->cur_line = -1;
     state->cur_sample = -1;
@@ -400,7 +414,7 @@ acquire_sample_rows(Relation relation,
 {
     char *catalog;
     HvaultExecState *state;
-    StringInfo filter;
+    StringInfoData query;
     List *coltypes;
     Oid foreigntableid;
     TupleDesc tupdesc;
@@ -419,12 +433,18 @@ acquire_sample_rows(Relation relation,
 
     coltypes = hvaultGetAllColumns(relation);
     state = makeExecState(coltypes, CurrentMemoryContext);
-    filter = makeStringInfo();
+
     num_files = targrows / 100;
     if (num_files < 5)
         num_files = 5;
-    appendStringInfo(filter, "ORDER BY random() LIMIT %d", num_files);
-    state->cursor = makeCatalogCursor(catalog, filter->data, NULL, NIL);
+
+    initStringInfo(&query);
+    appendStringInfo(&query, 
+                     "%s %s ORDER BY random() LIMIT %d", 
+                     HVAULT_CATALOG_QUERY_PREFIX,
+                     catalog,
+                     num_files);
+    state->cursor = makeCatalogCursor(query.data, NULL, NIL);
     
     check_column_types(state->coltypes, tupdesc);
     assignSDSBuffers(state, foreigntableid, tupdesc);
@@ -476,7 +496,7 @@ acquire_sample_rows(Relation relation,
         }
     }
 
-    *totalrows = hvaultGetNumFiles(catalog) * TUPLES_PER_FILE;
+    *totalrows = hvaultGetNumFiles(catalog) * HVAULT_TUPLES_PER_FILE;
     *totaldeadrows = 0;
     return num_rows;
 }
@@ -864,24 +884,16 @@ fetch_next_file(HvaultExecState *scan)
 }
 
 static HvaultCatalogCursor *
-makeCatalogCursor(char const *catalog,
-                  char const *catalog_filter,
+makeCatalogCursor(char const *query,
                   PlanState *plan,
                   List *fdw_expr)
 {
     HvaultCatalogCursor *cursor;
-    StringInfo query;
     ListCell *l;
 
     cursor = palloc(sizeof(HvaultCatalogCursor));
 
-    query = makeStringInfo();
-    appendStringInfoString(query, CATALOG_QUERY_PREFIX);
-    appendStringInfoString(query, catalog);
-    appendStringInfoChar(query, ' ');
-    appendStringInfoString(query, catalog_filter);
-
-    cursor->query = query->data;
+    cursor->query = query;
     cursor->fdw_expr = NIL;
     cursor->expr_ctx = NULL;
     cursor->file_cursor_name = NULL;
@@ -918,7 +930,7 @@ startCatalogCursor(HvaultCatalogCursor *cursor)
     int nargs, pos;
     Portal file_cursor;
         
-    Assert(cursor->catalog);
+    Assert(cursor->query);
     nargs = list_length(cursor->fdw_expr);
 
     elog(DEBUG1, "file cursor initialization");

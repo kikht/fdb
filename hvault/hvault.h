@@ -15,7 +15,8 @@
 /* PostGIS */
 #include <liblwgeom.h>
 
-#define TUPLES_PER_FILE (double)(2030*1354)
+#define HVAULT_TUPLES_PER_FILE (double)(2030*1354)
+#define HVAULT_CATALOG_QUERY_PREFIX "SELECT file_id, filename, starttime FROM "
 
 typedef enum HvaultColumnType
 {

@@ -77,7 +77,7 @@ get_column_types_walker(Node *node, HvaultColumnTypeWalkerContext *cxt)
         if (var->varno == cxt->relid)
         {
             AttrNumber attnum;
-            Assert(var->varattno <= natts);
+            Assert(var->varattno <= cxt->natts);
             attnum = var->varattno-1;
             if (cxt->types[attnum] == HvaultColumnNull)
             {
