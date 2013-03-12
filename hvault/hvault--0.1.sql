@@ -74,6 +74,8 @@ CREATE INDEX ON hdf_catalog (starttime);
 SELECT hvault_mass_load_modis_swath(
     'hdf_catalog', '/home/kikht/Downloads', 'MOD09*.hdf');
 
+ANALYZE hdf_catalog;
+
 CREATE FOREIGN TABLE test_catalog (
     file_id   int4        OPTIONS (type 'file_index'),
     line_id   int4        OPTIONS (type 'line_index'),
