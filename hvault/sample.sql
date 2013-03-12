@@ -3,7 +3,12 @@ SELECT d.file_id, d.line_id, d.sample_id, ST_AsText(pnt)
     JOIN hdf_catalog f ON d.file_id = f.file_id 
     WHERE NOT ST_Contains(f.footprint, d.pnt);
 
-SELECT * FROM test_catalog WHERE NOT ST_Contains(footprint, pnt);
+SELECT d.file_id, d.line_id, d.sample_id, ST_AsText(pnt) 
+    FROM test_catalog d 
+    JOIN hdf_catalog f ON d.file_id = f.file_id 
+    WHERE NOT f.footprint && d.pnt;
+
+SELECT * FROM test_catalog WHERE NOT ST_Contains(footpt, pnt);
 
 
 SELECT DISTINCT file_id FROM test_catalog;

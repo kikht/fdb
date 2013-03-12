@@ -203,6 +203,7 @@ hvaultGetPaths(PlannerInfo *root,
     List *footprint_quals = NIL;
     List *footprint_joins = NIL;
     List *considered_relids = NIL;
+    List *all_joins = NIL;
     int considered_clauses;
 
     /* Process pathkeys */
@@ -226,8 +227,10 @@ hvaultGetPaths(PlannerInfo *root,
                     catalog_quals, footprint_quals, NULL);
     
     /* Create parametrized join paths */
-    considered_clauses = list_length(catalog_joins) + list_length(catalog_ec);
-    foreach(l, catalog_joins)
+    all_joins = list_copy(catalog_joins);
+    all_joins = list_concat(all_joins, footprint_joins);
+    considered_clauses = list_length(all_joins) + list_length(catalog_ec);
+    foreach(l, all_joins)
     {
         RestrictInfo *rinfo = lfirst(l);
         Relids clause_relids = rinfo->clause_relids;
@@ -276,7 +279,6 @@ hvaultGetPaths(PlannerInfo *root,
     {
         EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
         Var *catalog_var = (Var *) lfirst(s);
-        Relids new_relids;
         if (catalog_var == NULL)
             continue;
 
@@ -284,6 +286,7 @@ hvaultGetPaths(PlannerInfo *root,
         {
             EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
             Var *var;
+            Relids relids;
 
             if (!IsA(em->em_expr, Var))
                 continue;
@@ -292,9 +295,15 @@ hvaultGetPaths(PlannerInfo *root,
             if (var->varno == baserel->relid)
                 continue;
 
+            relids = bms_make_singleton(catalog_var->varno);
+            relids = bms_add_member(relids, var->varno);
+            if (bms_equal_any(relids, considered_relids))
+                continue;
+
             foreach(k, considered_relids)
             {
-                Relids oldrelids = (Relids) lfirst(m);
+                Relids oldrelids = (Relids) lfirst(k);
+                Relids union_relids;
                 
                 if (bms_is_member(var->varno, oldrelids))                
                     continue;
@@ -302,22 +311,20 @@ hvaultGetPaths(PlannerInfo *root,
                 if (list_length(considered_relids) >= 10 * considered_clauses)
                     break;
 
-                new_relids = bms_copy(oldrelids);
-                new_relids = bms_add_member(new_relids, var->varno);
+                union_relids = bms_copy(oldrelids);
+                union_relids = bms_add_member(union_relids, var->varno);
                 generateJoinPath(root, baserel, fdw_private,
                                  pathkeys_list, sort_qual_list,
                                  catalog_quals, catalog_joins, 
                                  footprint_quals, footprint_joins,
-                                 new_relids, &considered_relids);
+                                 union_relids, &considered_relids);
             }
 
-            new_relids = bms_make_singleton(catalog_var->varno);
-            new_relids = bms_add_member(new_relids, var->varno);
             generateJoinPath(root, baserel, fdw_private, 
                              pathkeys_list, sort_qual_list,
                              catalog_quals, catalog_joins, 
                              footprint_quals, footprint_joins,
-                             new_relids, &considered_relids);        
+                             relids, &considered_relids);        
         }
     }
 }
@@ -1462,35 +1469,53 @@ addDeparseItem(HvaultDeparseContext *ctx)
 
 static char geomopstr[][4] = {"&&", "&<", "&>", "|&>", "&<|", "<<", ">>", 
                               "|>>", "<<|", "~", "@", "~="};
-static HvaultGeomOperator geomopcomm[HvaultGeomNumOpers] = {
-    HvaultGeomIntersect,
-    HvaultGeomRight,
-    HvaultGeomLeft,
-    HvaultGeomDown,
-    HvaultGeomUp,
-    HvaultGeomStrictRight,
-    HvaultGeomStrictLeft,
-    HvaultGeomStrictDown,
-    HvaultGeomStrictUp,
-    HvaultGeomIsContained,
-    HvaultGeomContains,
-    HvaultGeomSame
+static HvaultGeomOperator geomopcomm[HvaultGeomNumOpers] = 
+{
+    /* HvaultGeomIntersect   -> */ HvaultGeomIntersect,
+    /* HvaultGeomLeft        -> */ HvaultGeomRight,
+    /* HvaultGeomRight       -> */ HvaultGeomLeft,
+    /* HvaultGeomUp          -> */ HvaultGeomDown,
+    /* HvaultGeomDown        -> */ HvaultGeomUp,
+    /* HvaultGeomStrictLeft  -> */ HvaultGeomStrictRight,
+    /* HvaultGeomStrictRight -> */ HvaultGeomStrictLeft,
+    /* HvaultGeomStrictUp    -> */ HvaultGeomStrictDown,
+    /* HvaultGeomStrictDown  -> */ HvaultGeomStrictUp,
+    /* HvaultGeomContains    -> */ HvaultGeomIsContained,
+    /* HvaultGeomIsContained -> */ HvaultGeomContains,
+    /* HvaultGeomSame        -> */ HvaultGeomSame
 };
 
-static HvaultGeomOperator geomopmap[HvaultGeomNumOpers] = {
-    HvaultGeomIntersect,
-    HvaultGeomLeft,
-    HvaultGeomRight,
-    HvaultGeomUp,
-    HvaultGeomDown,
-    HvaultGeomLeft,
-    HvaultGeomRight,
-    HvaultGeomUp,
-    HvaultGeomDown,
-    HvaultGeomContains,
-    HvaultGeomIntersect,
-    HvaultGeomIntersect
+static HvaultGeomOperator geomopmap[HvaultGeomNumOpers] = 
+{
+    /* HvaultGeomIntersect   -> */ HvaultGeomIntersect,
+    /* HvaultGeomLeft        -> */ HvaultGeomLeft,
+    /* HvaultGeomRight       -> */ HvaultGeomRight,
+    /* HvaultGeomUp          -> */ HvaultGeomUp,
+    /* HvaultGeomDown        -> */ HvaultGeomDown,
+    /* HvaultGeomStrictLeft  -> */ HvaultGeomLeft,
+    /* HvaultGeomStrictRight -> */ HvaultGeomRight,
+    /* HvaultGeomStrictUp    -> */ HvaultGeomUp,
+    /* HvaultGeomStrictDown  -> */ HvaultGeomDown,
+    /* HvaultGeomContains    -> */ HvaultGeomContains,
+    /* HvaultGeomIsContained -> */ HvaultGeomIntersect,
+    /* HvaultGeomSame        -> */ HvaultGeomIntersect
 };          
+
+static HvaultGeomOperator geomnegopmap[HvaultGeomNumOpers] = 
+{
+    /* HvaultGeomIntersect   -> */ HvaultGeomIsContained,
+    /* HvaultGeomLeft        -> */ HvaultGeomLeft,
+    /* HvaultGeomRight       -> */ HvaultGeomRight,
+    /* HvaultGeomUp          -> */ HvaultGeomUp,
+    /* HvaultGeomDown        -> */ HvaultGeomDown,
+    /* HvaultGeomStrictLeft  -> */ HvaultGeomStrictLeft,
+    /* HvaultGeomStrictRight -> */ HvaultGeomStrictRight,
+    /* HvaultGeomStrictUp    -> */ HvaultGeomStrictUp,
+    /* HvaultGeomStrictDown  -> */ HvaultGeomStrictDown,
+    /* HvaultGeomContains    -> */ HvaultGeomInvalidOp,
+    /* HvaultGeomIsContained -> */ HvaultGeomIsContained,
+    /* HvaultGeomSame        -> */ HvaultGeomInvalidOp
+};
 
 static Oid
 getGeometryOpOid(char const *opname, SPIPlanPtr prep_stmt)
@@ -1526,7 +1551,6 @@ getGeometryOpers(HvaultTableInfo *table)
 {
     SPIPlanPtr prep_stmt;
     Oid argtypes[1];
-    Oid *opers;
     int i;
 
     if (SPI_connect() != SPI_OK_CONNECT)
@@ -1545,11 +1569,9 @@ getGeometryOpers(HvaultTableInfo *table)
         return; /* Will never reach this */
     }
 
-    opers = table->geomopers;
-
     for (i = 0; i < HvaultGeomNumOpers; i++)
     {
-        opers[i] = getGeometryOpOid(geomopstr[i], prep_stmt);
+        table->geomopers[i] = getGeometryOpOid(geomopstr[i], prep_stmt);
     }
     
     if (SPI_finish() != SPI_OK_FINISH)    
@@ -1570,33 +1592,62 @@ getGeometryOper(Oid opno, const HvaultTableInfo *table)
 }
 
 static bool
+isFootprintOpArgs(Expr *varnode, 
+                  Expr *arg, 
+                  const HvaultTableInfo *table, 
+                  HvaultColumnType *coltype)
+{
+    Var *var;
+
+    if (!IsA(varnode, Var))
+        return false;
+
+    var = (Var *) varnode;
+    if (var->varno != table->relid)
+        return false;
+
+    *coltype = table->coltypes[var->varattno - 1];
+    if (*coltype != HvaultColumnPoint && *coltype != HvaultColumnFootprint)
+        return false;
+
+    return true;
+}
+
+static bool
 isFootprintOp(Expr *expr, 
               const HvaultTableInfo *table, 
               Var **var, 
               Expr **arg, 
-              bool *varisright,
               HvaultGeomOperator *oper,
               HvaultColumnType *coltype)
 {
+    OpExpr *opexpr;
+    Expr *first, *second;
+
     if (!IsA(expr, OpExpr))
         return false;
 
-    OpExpr *opexpr = (OpExpr *) expr;
+    opexpr = (OpExpr *) expr;
 
     if (list_length(opexpr->args) != 2)
         return false;
 
-    if (IsA(linitial(opexpr->args), Var))
+    *oper = getGeometryOper(opexpr->opno, table);
+    if (*oper == HvaultGeomInvalidOp)
+        return false;
+
+    first = linitial(opexpr->args);
+    second = lsecond(opexpr->args);
+    if (isFootprintOpArgs(first, second, table, coltype))
     {
-        *var = (Var *) linitial(opexpr->args);
-        *arg = lsecond(opexpr->args);
-        *varisright = false;
+        *var = (Var *) first;
+        *arg = second;
     }
-    else if (IsA(lsecond(opexpr->args), Var))
+    else if (isFootprintOpArgs(second, first, table, coltype))
     {
-        *var = (Var *) lsecond(opexpr->args);
-        *arg = linitial(opexpr->args);
-        *varisright = true;
+        *var = (Var *) second;
+        *arg = first;
+        *oper = geomopcomm[*oper];
     }
     else 
     {
@@ -1604,35 +1655,55 @@ isFootprintOp(Expr *expr,
         return false;
     }
 
-    *oper = getGeometryOper(opexpr->opno, table);
-    if (*oper == HvaultGeomInvalidOp)
-        return false;
-
-    *coltype = table->coltypes[(*var)->varattno-1];
-    if (*coltype != HvaultColumnPoint && *coltype != HvaultColumnFootprint)
-        return false;
-
     if (!isCatalogQual(*arg, table))
         return false;
 
     return true;
 }
 
-// static bool isFootprintNegOp(Expr *expr, const HvaultTableInfo *table)
-// {
-//     //TODO:
-// }
+static bool 
+isFootprintNegOp(Expr *expr, 
+                 const HvaultTableInfo *table,
+                 Var **var, 
+                 Expr **arg, 
+                 HvaultGeomOperator *oper,
+                 HvaultColumnType *coltype)
+{
+    BoolExpr *boolexpr;
+
+    if (!IsA(expr, BoolExpr))
+        return false;
+
+    boolexpr = (BoolExpr *) expr;
+
+    if (boolexpr->boolop != NOT_EXPR)
+        return false;
+
+    if (list_length(boolexpr->args) != 1)
+        return false;
+
+    if (!isFootprintOp(linitial(boolexpr->args), table, 
+                       var, arg, oper, coltype))
+        return false;
+
+    if (geomnegopmap[*oper] == HvaultGeomInvalidOp)
+        return false;
+
+    return true;
+}
 
 static bool
 isFootprintQual(Expr *expr, const HvaultTableInfo *table)
 {
     Var *var = NULL;
     Expr *arg = NULL;
-    bool varisright;
     HvaultColumnType type;
     HvaultGeomOperator oper;
 
-    if (isFootprintOp(expr, table, &var, &arg, &varisright, &oper, &type))
+    if (isFootprintOp(expr, table, &var, &arg, &oper, &type))
+        return true;
+
+    if (isFootprintNegOp(expr, table, &var, &arg, &oper, &type))
         return true;
 
     return false;
@@ -1643,14 +1714,11 @@ deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
 {
     Var *var = NULL;
     Expr *arg = NULL;
-    bool varisright;
     HvaultColumnType type;
     HvaultGeomOperator oper;
 
-    if (isFootprintOp(node, ctx->table, &var, &arg, &varisright, &oper, &type))
+    if (isFootprintOp(node, ctx->table, &var, &arg, &oper, &type))
     {
-        if (varisright)
-            oper = geomopcomm[oper];
         char *opstr = geomopstr[geomopmap[oper]];
         Assert(opstr);
 
@@ -1659,6 +1727,17 @@ deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
         appendStringInfoChar(&ctx->query, ' ');
         deparseExpr(arg, ctx);
     } 
+    else if (isFootprintNegOp(node, ctx->table, &var, &arg, &oper, &type))
+    {
+        char *opstr = geomopstr[geomnegopmap[oper]];
+        Assert(opstr);
+
+        appendStringInfoString(&ctx->query, "NOT (footprint ");
+        appendStringInfoString(&ctx->query, opstr);
+        appendStringInfoChar(&ctx->query, ' ');
+        deparseExpr(arg, ctx);
+        appendStringInfoChar(&ctx->query, ')');
+    }
     else
     {
         elog(ERROR, "unsupported expression type for footprint deparse: %d",
