@@ -66,7 +66,6 @@ typedef struct
     char *catalog;
 
     Oid geomopers[HvaultGeomNumOpers];
-    char *geomopermap[HvaultGeomNumOpers*2];
 } HvaultTableInfo;
 
 typedef struct 
@@ -1463,6 +1462,35 @@ addDeparseItem(HvaultDeparseContext *ctx)
 
 static char geomopstr[][4] = {"&&", "&<", "&>", "|&>", "&<|", "<<", ">>", 
                               "|>>", "<<|", "~", "@", "~="};
+static HvaultGeomOperator geomopcomm[HvaultGeomNumOpers] = {
+    HvaultGeomIntersect,
+    HvaultGeomRight,
+    HvaultGeomLeft,
+    HvaultGeomDown,
+    HvaultGeomUp,
+    HvaultGeomStrictRight,
+    HvaultGeomStrictLeft,
+    HvaultGeomStrictDown,
+    HvaultGeomStrictUp,
+    HvaultGeomIsContained,
+    HvaultGeomContains,
+    HvaultGeomSame
+};
+
+static HvaultGeomOperator geomopmap[HvaultGeomNumOpers] = {
+    HvaultGeomIntersect,
+    HvaultGeomLeft,
+    HvaultGeomRight,
+    HvaultGeomUp,
+    HvaultGeomDown,
+    HvaultGeomLeft,
+    HvaultGeomRight,
+    HvaultGeomUp,
+    HvaultGeomDown,
+    HvaultGeomContains,
+    HvaultGeomIntersect,
+    HvaultGeomIntersect
+};          
 
 static Oid
 getGeometryOpOid(char const *opname, SPIPlanPtr prep_stmt)
@@ -1499,7 +1527,6 @@ getGeometryOpers(HvaultTableInfo *table)
     SPIPlanPtr prep_stmt;
     Oid argtypes[1];
     Oid *opers;
-    char **map;
     int i;
 
     if (SPI_connect() != SPI_OK_CONNECT)
@@ -1519,38 +1546,12 @@ getGeometryOpers(HvaultTableInfo *table)
     }
 
     opers = table->geomopers;
-    map = table->geomopermap;
 
     for (i = 0; i < HvaultGeomNumOpers; i++)
     {
         opers[i] = getGeometryOpOid(geomopstr[i], prep_stmt);
     }
     
-    map[2*HvaultGeomIntersect]       = geomopstr[HvaultGeomIntersect];
-    map[2*HvaultGeomIntersect + 1]   = geomopstr[HvaultGeomIntersect];
-    map[2*HvaultGeomLeft]            = geomopstr[HvaultGeomLeft];
-    map[2*HvaultGeomLeft + 1]        = geomopstr[HvaultGeomRight];
-    map[2*HvaultGeomRight]           = geomopstr[HvaultGeomRight];
-    map[2*HvaultGeomRight + 1]       = geomopstr[HvaultGeomLeft];
-    map[2*HvaultGeomUp]              = geomopstr[HvaultGeomUp];
-    map[2*HvaultGeomUp + 1]          = geomopstr[HvaultGeomDown];
-    map[2*HvaultGeomDown]            = geomopstr[HvaultGeomDown];
-    map[2*HvaultGeomDown + 1]        = geomopstr[HvaultGeomUp];
-    map[2*HvaultGeomStrictLeft]      = geomopstr[HvaultGeomLeft];
-    map[2*HvaultGeomStrictLeft + 1]  = geomopstr[HvaultGeomRight];
-    map[2*HvaultGeomStrictRight]     = geomopstr[HvaultGeomRight];
-    map[2*HvaultGeomStrictRight + 1] = geomopstr[HvaultGeomLeft];
-    map[2*HvaultGeomStrictUp]        = geomopstr[HvaultGeomUp];
-    map[2*HvaultGeomStrictUp + 1]    = geomopstr[HvaultGeomDown];
-    map[2*HvaultGeomStrictDown]      = geomopstr[HvaultGeomDown];
-    map[2*HvaultGeomStrictDown + 1]  = geomopstr[HvaultGeomUp];
-    map[2*HvaultGeomContains]        = geomopstr[HvaultGeomContains];
-    map[2*HvaultGeomContains + 1]    = geomopstr[HvaultGeomIntersect];
-    map[2*HvaultGeomIsContained]     = geomopstr[HvaultGeomIntersect];
-    map[2*HvaultGeomIsContained + 1] = geomopstr[HvaultGeomContains];
-    map[2*HvaultGeomSame]            = geomopstr[HvaultGeomIntersect];
-    map[2*HvaultGeomSame + 1]        = geomopstr[HvaultGeomIntersect];
-
     if (SPI_finish() != SPI_OK_FINISH)    
     {
         ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
@@ -1648,7 +1649,9 @@ deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
 
     if (isFootprintOp(node, ctx->table, &var, &arg, &varisright, &oper, &type))
     {
-        char *opstr = ctx->table->geomopermap[2*oper + varisright];
+        if (varisright)
+            oper = geomopcomm[oper];
+        char *opstr = geomopstr[geomopmap[oper]];
         Assert(opstr);
 
         appendStringInfoString(&ctx->query, "footprint ");
