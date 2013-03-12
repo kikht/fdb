@@ -1322,6 +1322,74 @@ deparseNullTest(NullTest *node, HvaultDeparseContext *ctx)
         appendStringInfo(&ctx->query, " IS NOT NULL)");
 }
 
+static void 
+deparseConstant(Const *node, HvaultDeparseContext *ctx)
+{
+    Oid typoutput;
+    bool typIsVarlena;
+    char *extval, *quoted = NULL;
+
+    if (node->constisnull)
+    {
+        appendStringInfo(&ctx->query, "NULL");
+        appendStringInfo(&ctx->query, "::%s",
+                         format_type_with_typemod(node->consttype,
+                                                  node->consttypmod));
+        return;
+    }
+
+    getTypeOutputInfo(node->consttype,
+                      &typoutput, &typIsVarlena);
+    extval = OidOutputFunctionCall(typoutput, node->constvalue);
+
+    switch (node->consttype)
+    {
+        case INT2OID:
+        case INT4OID:
+        case INT8OID:
+        case OIDOID:
+        case FLOAT4OID:
+        case FLOAT8OID:
+        case NUMERICOID:
+            {
+                /*
+                 * No need to quote unless it's a special value such as 'NaN'.
+                 * See comments in get_const_expr().
+                 */
+                if (strspn(extval, "0123456789+-eE.") == strlen(extval))
+                {
+                    if (extval[0] == '+' || extval[0] == '-')
+                        appendStringInfo(&ctx->query, "(%s)", extval);
+                    else
+                        appendStringInfoString(&ctx->query, extval);
+                }
+                else
+                    appendStringInfo(&ctx->query, "'%s'", extval);
+            }
+            break;
+        case BITOID:
+        case VARBITOID:
+            appendStringInfo(&ctx->query, "B'%s'", extval);
+            break;
+        case BOOLOID:
+            if (strcmp(extval, "t") == 0)
+                appendStringInfoString(&ctx->query, "true");
+            else
+                appendStringInfoString(&ctx->query, "false");
+            break;
+        default:
+            quoted = quote_literal_cstr(extval);
+            appendStringInfoString(&ctx->query, quoted);
+            pfree(quoted);
+            quoted = NULL;
+            break;
+    }
+
+    appendStringInfo(&ctx->query, "::%s",
+                     format_type_with_typemod(node->consttype,
+                                              node->consttypmod));
+}
+
 static void
 deparseExpr(Expr *node, HvaultDeparseContext *ctx)
 {
@@ -1334,6 +1402,8 @@ deparseExpr(Expr *node, HvaultDeparseContext *ctx)
             deparseVar((Var *) node, ctx);
             break;
         case T_Const:
+            deparseConstant((Const *) node, ctx);
+            break;
         case T_Param:
             deparseParameter(node, ctx);
             break;
