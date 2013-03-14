@@ -2,7 +2,9 @@
 #define _HDF_H_
 
 #include "hvault.h"
-#include <hdf/mfhdf.h>
+#include <hdf/hntdefs.h>
+
+#define FAIL -1
 
 
 bool hdf_file_open(HvaultHDFFile *file,

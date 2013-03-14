@@ -1,5 +1,6 @@
 #include "hdf.h"
 
+#include <hdf/mfhdf.h>
 #include <time.h>
 #include <utils/memutils.h>
 
