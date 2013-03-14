@@ -17,8 +17,10 @@
 #include <utils/timestamp.h>
 
 /* HDF */
+#define int8 hdf_int8
 #include <hdf/mfhdf.h>
 #include <hdf/hlimits.h>
+#undef int8
 
 /* PostGIS */
 #include <liblwgeom.h>
@@ -476,7 +478,7 @@ mass_load_modis_swath_walker(char const * fpath,
 
     if (fnmatch(mass_load_ctx.pattern, basename, FNM_PATHNAME) == 0)
     {
-        elog(DEBUG1, "Processing %s", fpath);
+        elog(NOTICE, "Processing %s", fpath);
         if (!check_modis_swath_exists(mass_load_ctx.check_plan, fpath))
         {
             mass_load_ctx.info.filename = fpath;

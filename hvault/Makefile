@@ -1,13 +1,13 @@
-INC=-I/usr/pgsql-9.2/include/server/
-HDFLIB=-L/usr/lib/hdf -lmfhdf -ldf -ljpeg -lz 
-LIB=-l:/usr/pgsql-9.2/lib/postgis-2.0.so $(HDFLIB)
-	
-CFLAGS = -std=c99 -D_POSIX_C_SOURCE -g -Wall -pedantic -DUSE_ASSERT_CHECKING
-# optimization flags
-CFLAGS := $(CFLAGS) -O3 -flto -march=native -UUSE_ASSERT_CHECKING
+POSTGRES_PREFIX=/usr/pgsql-9.2
 
-hvault: hvault.so
-	psql gis-test -c "drop extension hvault; create extension hvault;"
+INC=-I$(POSTGRES_PREFIX)/include/server/
+HDFLIB=-L/usr/lib{,64}/hdf -lmfhdf -ldf -ljpeg -lz 
+LIB=-l:$(POSTGRES_PREFIX)/lib/postgis-2.0.so $(HDFLIB)
+	
+CFLAGS = -std=c99 -D_POSIX_C_SOURCE -fPIC -g -Wall -pedantic \
+		 -DUSE_ASSERT_CHECKING
+# optimization flags
+CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING
 
 hvault.so: hvault.o interpolate.o hdf.o metaload.o plan.o utils.o
 	gcc $(CFLAGS) -shared -Wl,-soname,$@ -o $@ $^ $(LIB)
@@ -32,3 +32,8 @@ hvault.o: hvault.c hvault.h hdf.h
 
 clean:
 	rm -rf *.o *.so
+
+install: hvault.so hvault--0.1.sql hvault.control
+	install --mode=755 hvault.so $(POSTGRES_PREFIX)/lib
+	install --mode=644 hvault--0.1.sql $(POSTGRES_PREFIX)/share/extension
+	install --mode=644 hvault.control $(POSTGRES_PREFIX)/share/extension
