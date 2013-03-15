@@ -30,13 +30,52 @@ typedef enum HvaultColumnType
     HvaultColumnTime,
 } HvaultColumnType;
 
+typedef enum 
+{  
+    HvaultGeomInvalidOp = -1,
+
+    HvaultGeomIntersect = 0,/* &&  */
+    HvaultGeomLeft,         /* &<  */
+    HvaultGeomRight,        /* &>  */
+    HvaultGeomUp,           /* |&> */
+    HvaultGeomDown,         /* &<| */
+    HvaultGeomStrictLeft,   /* <<  */
+    HvaultGeomStrictRight,  /* >>  */
+    HvaultGeomStrictUp,     /* |>> */
+    HvaultGeomStrictDown,   /* <<| */
+    HvaultGeomContains,     /* ~   */
+    HvaultGeomIsContained,  /* @   */
+    HvaultGeomSame,         /* ~=  */
+
+    HvaultGeomNumOpers,
+} HvaultGeomOperator;
+
 enum HvaultPlanItems
 {
     HvaultPlanCatalogQuery = 0,
     HvaultPlanColtypes,
+    HvaultPlanPredicates,
 
     HvaultPlanNumParams,
 };
+
+enum HvaultPredicateItems
+{
+    HvaultPredicateColtype = 0,
+    HvaultPredicateGeomOper,
+    HvaultPredicateArgno,
+    HvaultPredicateIsNegative,
+
+    HvaultPredicateNumParams,
+};
+
+typedef struct 
+{
+    HvaultColumnType coltype;
+    HvaultGeomOperator op;
+    size_t argno;
+    bool isneg;
+} HvaultGeomPredicate;
 
 typedef struct 
 {
@@ -56,6 +95,8 @@ typedef struct
     List *sds;                      /* list of HvaultSDSBuffer */
     float *prevbrdlat, *prevbrdlon; /* Buffers for footprint calculation */
     float *nextbrdlat, *nextbrdlon; /* Buffers for footprint calculation */
+    size_t *sel;
+    int sel_size;
 
     int32_t sd_id;                  /* HDF interface handle */
     int num_samples, num_lines;     /* dimensions of file datasets */
@@ -65,8 +106,6 @@ typedef struct
 typedef struct
 {
     char const *query;         /* Catalog query string */
-    List *fdw_expr;      /* List of prepared for computation query expressions*/
-    ExprContext *expr_ctx;
 
     SPIPlanPtr prep_stmt;
     char const *file_cursor_name; /* Name of catalog query cursor */
@@ -85,6 +124,9 @@ typedef struct
     List *coltypes;      /* List of HvaultColumnTypes for each column */
     bool has_footprint;  /* true if query needs footprint calculation */
     int scan_size;       /* Number of lines in one scan */
+    List *fdw_expr;      /* List of prepared for computation query expressions*/
+    ExprContext *expr_ctx; /* Context for prepared expressions */
+    List *predicates;    /* List of HvaultGeomPredicate */
 
     /* iteration state */
     HvaultCatalogCursor *cursor;
@@ -95,7 +137,7 @@ typedef struct
                                      footprint calculation */
     Timestamp file_time;          /* File timestamp */
     /* current position */
-    int cur_file, cur_line, cur_sample; /* Current position */
+    int cur_file, cur_line, cur_sample, cur_sel; /* Current position */
 
     /* tuple values */
     Datum *values;       /* Tuple values */
@@ -138,6 +180,16 @@ HvaultColumnType *hvaultGetUsedColumns(PlannerInfo *root,
                                        AttrNumber natts);
 List *hvaultGetAllColumns(Relation relation);
 double hvaultGetNumFiles(char *catalog);
+
+/* predicate.c */
+int hvaultGeomPredicate(HvaultColumnType coltype,
+                        HvaultGeomOperator op,
+                        bool neg,
+                        HvaultExecState const *scan,
+                        GBOX const * arg,
+                        int n,
+                        size_t const *sel,
+                        size_t *res);
 
 
 #endif /* _HVAULT_H_ */

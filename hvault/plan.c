@@ -38,25 +38,6 @@
  * This file includes routines involved in query planning
  */
 
-typedef enum 
-{  
-    HvaultGeomInvalidOp = -1,
-
-    HvaultGeomIntersect = 0,/* &&  */
-    HvaultGeomLeft,         /* &<  */
-    HvaultGeomRight,        /* &>  */
-    HvaultGeomUp,           /* |&> */
-    HvaultGeomDown,         /* &<| */
-    HvaultGeomStrictLeft,   /* <<  */
-    HvaultGeomStrictRight,  /* >>  */
-    HvaultGeomStrictUp,     /* |>> */
-    HvaultGeomStrictDown,   /* <<| */
-    HvaultGeomContains,     /* ~   */
-    HvaultGeomIsContained,  /* @   */
-    HvaultGeomSame,         /* ~=  */
-
-    HvaultGeomNumOpers,
-} HvaultGeomOperator;
 
 typedef struct 
 {
@@ -75,12 +56,14 @@ typedef struct
     List *fdw_expr;
     char const * filter;
     char const * sort;
+    List *predicates;
 } HvaultPathData;
 
 typedef struct
 {
     HvaultTableInfo const *table;
     List *fdw_expr;
+    List *predicates;
     StringInfoData query;
     bool first_qual;
 } HvaultDeparseContext;
@@ -390,6 +373,7 @@ hvaultGetPlan(PlannerInfo *root,
     }
     fdw_plan_private = lappend(fdw_plan_private, makeString(query.data));
     fdw_plan_private = lappend(fdw_plan_private, coltypes);
+    fdw_plan_private = lappend(fdw_plan_private, fdw_private->predicates);
 
     return make_foreignscan(tlist, rest_clauses, baserel->relid, 
                             fdw_private->fdw_expr, fdw_plan_private);
@@ -821,6 +805,7 @@ static void addForeignPaths(PlannerInfo *root,
     deparse_ctx.table = table;
     deparse_ctx.fdw_expr = NIL;
     deparse_ctx.first_qual = true;
+    deparse_ctx.predicates = NIL;
     initStringInfo(&deparse_ctx.query);
     
     appendStringInfoString(&deparse_ctx.query, HVAULT_CATALOG_QUERY_PREFIX);
@@ -879,6 +864,7 @@ static void addForeignPaths(PlannerInfo *root,
             path_data->filter = deparse_ctx.query.data;
             path_data->sort = sort_qual;
             path_data->fdw_expr = deparse_ctx.fdw_expr;
+            path_data->predicates = deparse_ctx.predicates;
 
             path = create_foreignscan_path(root, baserel, rows, 
                                            startup_cost, total_cost, pathkeys, 
@@ -1709,6 +1695,12 @@ isFootprintQual(Expr *expr, const HvaultTableInfo *table)
     return false;
 }
 
+static List *
+predicateToList(HvaultGeomPredicate *p)
+{
+    return list_make4_int(p->coltype, p->op, p->isneg, p->argno);
+}
+
 static void
 deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
 {
@@ -1716,20 +1708,28 @@ deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
     Expr *arg = NULL;
     HvaultColumnType type;
     HvaultGeomOperator oper;
+    char *opstr;
+    HvaultGeomPredicate pred;
 
     if (isFootprintOp(node, ctx->table, &var, &arg, &oper, &type))
     {
-        char *opstr = geomopstr[geomopmap[oper]];
+        opstr = geomopstr[geomopmap[oper]];
         Assert(opstr);
 
         appendStringInfoString(&ctx->query, "footprint ");
         appendStringInfoString(&ctx->query, opstr);
         appendStringInfoChar(&ctx->query, ' ');
         deparseExpr(arg, ctx);
+
+        pred.coltype = type;
+        pred.op = oper;
+        pred.isneg = false;
+        pred.argno = list_length(ctx->fdw_expr);
+        ctx->fdw_expr = lappend(ctx->fdw_expr, arg);
     } 
     else if (isFootprintNegOp(node, ctx->table, &var, &arg, &oper, &type))
     {
-        char *opstr = geomopstr[geomnegopmap[oper]];
+        opstr = geomopstr[geomnegopmap[oper]];
         Assert(opstr);
 
         appendStringInfoString(&ctx->query, "NOT (footprint ");
@@ -1737,6 +1737,12 @@ deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
         appendStringInfoChar(&ctx->query, ' ');
         deparseExpr(arg, ctx);
         appendStringInfoChar(&ctx->query, ')');
+
+        pred.coltype = type;
+        pred.op = oper;
+        pred.isneg = true;
+        pred.argno = list_length(ctx->fdw_expr);
+        ctx->fdw_expr = lappend(ctx->fdw_expr, arg);
     }
     else
     {
@@ -1744,5 +1750,7 @@ deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
              (int) nodeTag(node));
         return; /* Will never reach this */   
     }
+    ctx->predicates = lappend(ctx->predicates, predicateToList(&pred));
 }
+
 
