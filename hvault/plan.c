@@ -42,20 +42,28 @@ typedef enum
 {  
     HvaultGeomInvalidOp = -1,
 
-    HvaultGeomIntersect = 0,/* &&  */
-    HvaultGeomLeft,         /* &<  */
-    HvaultGeomRight,        /* &>  */
-    HvaultGeomUp,           /* |&> */
-    HvaultGeomDown,         /* &<| */
-    HvaultGeomStrictLeft,   /* <<  */
-    HvaultGeomStrictRight,  /* >>  */
-    HvaultGeomStrictUp,     /* |>> */
-    HvaultGeomStrictDown,   /* <<| */
-    HvaultGeomContains,     /* ~   */
-    HvaultGeomIsContained,  /* @   */
-    HvaultGeomSame,         /* ~=  */
+    HvaultGeomOverlaps = 0,/* &&  */
+    HvaultGeomContains,    /* ~   */
+    HvaultGeomWithin,      /* @   */
+    HvaultGeomSame,        /* ~=  */
+    HvaultGeomOverleft,    /* &<  */
+    HvaultGeomOverright,   /* &>  */
+    HvaultGeomOverabove,   /* |&> */
+    HvaultGeomOverbelow,   /* &<| */
+    HvaultGeomLeft,        /* <<  */
+    HvaultGeomRight,       /* >>  */
+    HvaultGeomAbove,       /* |>> */
+    HvaultGeomBelow,       /* <<| */
 
-    HvaultGeomNumOpers,
+    HvaultGeomNumRealOpers,
+
+    /* fake commutators */
+    HvaultGeomCommLeft = HvaultGeomNumRealOpers,
+    HvaultGeomCommRight,
+    HvaultGeomCommUp,
+    HvaultGeomCommDown,
+
+    HvaultGeomNumAllOpers,
 } HvaultGeomOperator;
 
 typedef struct 
@@ -65,7 +73,7 @@ typedef struct
     HvaultColumnType *coltypes;
     char *catalog;
 
-    Oid geomopers[HvaultGeomNumOpers];
+    Oid geomopers[HvaultGeomNumRealOpers];
 } HvaultTableInfo;
 
 typedef struct 
@@ -1467,54 +1475,74 @@ addDeparseItem(HvaultDeparseContext *ctx)
  * -----------------------------------
  */
 
-static char geomopstr[][4] = {"&&", "&<", "&>", "|&>", "&<|", "<<", ">>", 
-                              "|>>", "<<|", "~", "@", "~="};
-static HvaultGeomOperator geomopcomm[HvaultGeomNumOpers] = 
-{
-    /* HvaultGeomIntersect   -> */ HvaultGeomIntersect,
-    /* HvaultGeomLeft        -> */ HvaultGeomRight,
-    /* HvaultGeomRight       -> */ HvaultGeomLeft,
-    /* HvaultGeomUp          -> */ HvaultGeomDown,
-    /* HvaultGeomDown        -> */ HvaultGeomUp,
-    /* HvaultGeomStrictLeft  -> */ HvaultGeomStrictRight,
-    /* HvaultGeomStrictRight -> */ HvaultGeomStrictLeft,
-    /* HvaultGeomStrictUp    -> */ HvaultGeomStrictDown,
-    /* HvaultGeomStrictDown  -> */ HvaultGeomStrictUp,
-    /* HvaultGeomContains    -> */ HvaultGeomIsContained,
-    /* HvaultGeomIsContained -> */ HvaultGeomContains,
-    /* HvaultGeomSame        -> */ HvaultGeomSame
+static char * geomopstr[HvaultGeomNumAllOpers] = {
+    "&&", "&<", "&>", "|&>", "&<|", "<<", ">>", "|>>", "<<|", "~", "@", "~=",
+          "&<", "&>", "|&>", "&<|"
 };
 
-static HvaultGeomOperator geomopmap[HvaultGeomNumOpers] = 
-{
-    /* HvaultGeomIntersect   -> */ HvaultGeomIntersect,
-    /* HvaultGeomLeft        -> */ HvaultGeomLeft,
-    /* HvaultGeomRight       -> */ HvaultGeomRight,
-    /* HvaultGeomUp          -> */ HvaultGeomUp,
-    /* HvaultGeomDown        -> */ HvaultGeomDown,
-    /* HvaultGeomStrictLeft  -> */ HvaultGeomLeft,
-    /* HvaultGeomStrictRight -> */ HvaultGeomRight,
-    /* HvaultGeomStrictUp    -> */ HvaultGeomUp,
-    /* HvaultGeomStrictDown  -> */ HvaultGeomDown,
-    /* HvaultGeomContains    -> */ HvaultGeomContains,
-    /* HvaultGeomIsContained -> */ HvaultGeomIntersect,
-    /* HvaultGeomSame        -> */ HvaultGeomIntersect
-};          
+typedef struct {
+    HvaultGeomOperator op;
+    bool isneg;
+} HvaultGeomPredicate;
 
-static HvaultGeomOperator geomnegopmap[HvaultGeomNumOpers] = 
+static HvaultGeomOperator geomopcomm[HvaultGeomNumAllOpers] = 
 {
-    /* HvaultGeomIntersect   -> */ HvaultGeomIsContained,
-    /* HvaultGeomLeft        -> */ HvaultGeomLeft,
-    /* HvaultGeomRight       -> */ HvaultGeomRight,
-    /* HvaultGeomUp          -> */ HvaultGeomUp,
-    /* HvaultGeomDown        -> */ HvaultGeomDown,
-    /* HvaultGeomStrictLeft  -> */ HvaultGeomStrictLeft,
-    /* HvaultGeomStrictRight -> */ HvaultGeomStrictRight,
-    /* HvaultGeomStrictUp    -> */ HvaultGeomStrictUp,
-    /* HvaultGeomStrictDown  -> */ HvaultGeomStrictDown,
-    /* HvaultGeomContains    -> */ HvaultGeomInvalidOp,
-    /* HvaultGeomIsContained -> */ HvaultGeomIsContained,
-    /* HvaultGeomSame        -> */ HvaultGeomInvalidOp
+    /* HvaultGeomOverlaps  -> */ HvaultGeomOverlaps,
+    /* HvaultGeomContains  -> */ HvaultGeomWithin,
+    /* HvaultGeomWithin    -> */ HvaultGeomContains,
+    /* HvaultGeomSame      -> */ HvaultGeomSame,
+    /* HvaultGeomOverleft  -> */ HvaultGeomCommLeft,
+    /* HvaultGeomOverright -> */ HvaultGeomCommRight,
+    /* HvaultGeomOverabove -> */ HvaultGeomCommUp,
+    /* HvaultGeomOverbelow -> */ HvaultGeomCommDown,
+    /* HvaultGeomLeft      -> */ HvaultGeomRight,
+    /* HvaultGeomRight     -> */ HvaultGeomLeft,
+    /* HvaultGeomAbove     -> */ HvaultGeomBelow,
+    /* HvaultGeomBelow     -> */ HvaultGeomAbove,
+    /* HvaultGeomCommLeft  -> */ HvaultGeomOverleft,
+    /* HvaultGeomCommRight -> */ HvaultGeomOverright,
+    /* HvaultGeomCommUp    -> */ HvaultGeomOverabove,
+    /* HvaultGeomCommDown  -> */ HvaultGeomOverbelow,
+};
+
+static HvaultGeomPredicate geomopmap[HvaultGeomNumAllOpers] = 
+{
+    /* HvaultGeomOverlaps  -> */ { HvaultGeomOverlaps,  false },
+    /* HvaultGeomContains  -> */ { HvaultGeomContains,  false },
+    /* HvaultGeomWithin    -> */ { HvaultGeomOverlaps,  false },
+    /* HvaultGeomSame      -> */ { HvaultGeomContains,  false },
+    /* HvaultGeomOverleft  -> */ { HvaultGeomRight,     true  },
+    /* HvaultGeomOverright -> */ { HvaultGeomLeft,      true  },
+    /* HvaultGeomOverabove -> */ { HvaultGeomBelow,     true  },
+    /* HvaultGeomOverbelow -> */ { HvaultGeomAbove,     true  },
+    /* HvaultGeomLeft      -> */ { HvaultGeomOverright, true  },
+    /* HvaultGeomRight     -> */ { HvaultGeomOverleft,  true  },
+    /* HvaultGeomAbove     -> */ { HvaultGeomOverbelow, true  },
+    /* HvaultGeomBelow     -> */ { HvaultGeomOverabove, true  },
+    /* HvaultGeomCommLeft  -> */ { HvaultGeomCommLeft,  false },
+    /* HvaultGeomCommRight -> */ { HvaultGeomCommRight, false },
+    /* HvaultGeomCommUp    -> */ { HvaultGeomCommUp,    false },
+    /* HvaultGeomCommDown  -> */ { HvaultGeomCommDown,  false },
+};
+
+static HvaultGeomPredicate geomnegopmap[HvaultGeomNumAllOpers] = 
+{
+    /* HvaultGeomOverlaps  -> */ { HvaultGeomWithin,    true  },
+    /* HvaultGeomContains  -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomWithin    -> */ { HvaultGeomWithin,    true  },
+    /* HvaultGeomSame      -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomOverleft  -> */ { HvaultGeomOverleft,  true  },
+    /* HvaultGeomOverright -> */ { HvaultGeomOverright, true  },
+    /* HvaultGeomOverabove -> */ { HvaultGeomOverabove, true  },
+    /* HvaultGeomOverbelow -> */ { HvaultGeomOverbelow, true  },
+    /* HvaultGeomLeft      -> */ { HvaultGeomLeft,      true  },
+    /* HvaultGeomRight     -> */ { HvaultGeomRight,     true  },
+    /* HvaultGeomAbove     -> */ { HvaultGeomAbove,     true  },
+    /* HvaultGeomBelow     -> */ { HvaultGeomBelow,     true  },
+    /* HvaultGeomCommLeft  -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomCommRight -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomCommUp    -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomCommDown  -> */ { HvaultGeomInvalidOp, false },
 };
 
 static Oid
@@ -1569,7 +1597,7 @@ getGeometryOpers(HvaultTableInfo *table)
         return; /* Will never reach this */
     }
 
-    for (i = 0; i < HvaultGeomNumOpers; i++)
+    for (i = 0; i < HvaultGeomNumRealOpers; i++)
     {
         table->geomopers[i] = getGeometryOpOid(geomopstr[i], prep_stmt);
     }
@@ -1585,7 +1613,7 @@ getGeometryOpers(HvaultTableInfo *table)
 static inline HvaultGeomOperator
 getGeometryOper(Oid opno, const HvaultTableInfo *table)
 {
-    for(int i = 0; i < HvaultGeomNumOpers; ++i)
+    for(int i = 0; i < HvaultGeomNumRealOpers; ++i)
         if (table->geomopers[i] == opno) 
             return i;
     return HvaultGeomInvalidOp;
@@ -1686,7 +1714,7 @@ isFootprintNegOp(Expr *expr,
                        var, arg, oper, coltype))
         return false;
 
-    if (geomnegopmap[*oper] == HvaultGeomInvalidOp)
+    if (geomnegopmap[*oper].op == HvaultGeomInvalidOp)
         return false;
 
     return true;
@@ -1716,33 +1744,42 @@ deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
     Expr *arg = NULL;
     HvaultColumnType type;
     HvaultGeomOperator oper;
+    HvaultGeomPredicate pred = { HvaultGeomInvalidOp, false };
 
-    if (isFootprintOp(node, ctx->table, &var, &arg, &oper, &type))
+    if (isFootprintOp(node, ctx->table, &var, &arg, &oper, &type)) 
     {
-        char *opstr = geomopstr[geomopmap[oper]];
-        Assert(opstr);
-
-        appendStringInfoString(&ctx->query, "footprint ");
-        appendStringInfoString(&ctx->query, opstr);
-        appendStringInfoChar(&ctx->query, ' ');
-        deparseExpr(arg, ctx);
+        pred = geomopmap[oper];
     } 
     else if (isFootprintNegOp(node, ctx->table, &var, &arg, &oper, &type))
     {
-        char *opstr = geomopstr[geomnegopmap[oper]];
-        Assert(opstr);
-
-        appendStringInfoString(&ctx->query, "NOT (footprint ");
-        appendStringInfoString(&ctx->query, opstr);
-        appendStringInfoChar(&ctx->query, ' ');
-        deparseExpr(arg, ctx);
-        appendStringInfoChar(&ctx->query, ')');
+        pred = geomnegopmap[oper];
     }
-    else
+
+    if (pred.op == HvaultGeomInvalidOp)
     {
         elog(ERROR, "unsupported expression type for footprint deparse: %d",
              (int) nodeTag(node));
         return; /* Will never reach this */   
     }
+
+    if (pred.isneg)
+        appendStringInfoString(&ctx->query, "NOT ");
+    
+    appendStringInfoChar(&ctx->query, '(');
+    if (pred.op < HvaultGeomNumRealOpers) 
+    {
+        appendStringInfoString(&ctx->query, "footprint ");
+        appendStringInfoString(&ctx->query, geomopstr[pred.op]);
+        appendStringInfoChar(&ctx->query, ' ');
+        deparseExpr(arg, ctx);
+    }
+    else
+    {
+        deparseExpr(arg, ctx);  
+        appendStringInfoChar(&ctx->query, ' ');
+        appendStringInfoString(&ctx->query, geomopstr[pred.op]);
+        appendStringInfoString(&ctx->query, " footprint");
+    }
+    appendStringInfoChar(&ctx->query, ')');
 }
 
