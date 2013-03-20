@@ -374,11 +374,11 @@ hvaultGetPlan(PlannerInfo *root,
         }
         else
         {
-            elog(DEBUG1, "Skipping catalog clause %s", 
+            elog(DEBUG1, "Skipping external clause %s", 
                  nodeToString(rinfo->clause));
         }
     }
-    rest_clauses = extract_actual_clauses(scan_clauses, false);
+    rest_clauses = extract_actual_clauses(rest_clauses, false);
 
     elog(DEBUG2, "GetPlan: scan_cl: %s\nrest_cl: %s",
          nodeToString(scan_clauses),
