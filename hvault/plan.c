@@ -861,7 +861,6 @@ static void addForeignPaths(PlannerInfo *root,
         HvaultGeomPredicate pred;
         if (qual->catalog_pred.op != HvaultGeomInvalidOp)
         {
-            RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
             addDeparseItem(&deparse_ctx);
             deparseFootprintExpr(qual, &deparse_ctx);
         }

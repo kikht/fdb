@@ -81,7 +81,7 @@ typedef struct
 {
     HvaultColumnType coltype;
     HvaultGeomOperator op;
-    size_t argno;
+    int argno;
     bool isneg;
 } HvaultGeomPredicate;
 
