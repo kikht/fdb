@@ -832,10 +832,9 @@ static void addForeignPaths(PlannerInfo *root,
     int catwidth;
     int nargs, argno;
     Oid *argtypes;
-    List *predicates;
-    List *own_quals;
+    List *predicates, *own_quals, *pred_quals;
+    Selectivity selectivity;
 
-    predicates = NIL;
     own_quals = list_copy(catalog_quals);
     /* Prepare catalog query */
     deparse_ctx.table = table;
@@ -853,6 +852,9 @@ static void addForeignPaths(PlannerInfo *root,
         addDeparseItem(&deparse_ctx);
         deparseExpr(rinfo->clause, &deparse_ctx);
     }
+
+    predicates = NIL;
+    pred_quals = NIL;
     foreach(l, footprint_quals)
     {
         GeomOpQual *qual = (GeomOpQual *) lfirst(l);
@@ -869,6 +871,7 @@ static void addForeignPaths(PlannerInfo *root,
         pred.argno = insertFdwExpr(&deparse_ctx.fdw_expr, qual->arg);
         predicates = lappend(predicates, predicateToList(&pred));
         own_quals = lappend(own_quals, qual->rinfo);
+        pred_quals = lappend(pred_quals, qual->rinfo);
     }
 
     nargs = list_length(deparse_ctx.fdw_expr);
@@ -890,7 +893,9 @@ static void addForeignPaths(PlannerInfo *root,
     pfree(argtypes);
     argtypes = NULL;
 
-    rows = catrows * HVAULT_TUPLES_PER_FILE;
+    selectivity = clauselist_selectivity(root, pred_quals, baserel->relid, 
+                                         JOIN_INNER, NULL);
+    rows = catrows * selectivity * HVAULT_TUPLES_PER_FILE;
     startup_cost = catmin + STARTUP_COST;
     total_cost = catmax + STARTUP_COST + rows * PIXEL_COST;
     forboth(l, pathkeys_list, m, sort_qual_list)
