@@ -9,7 +9,7 @@ CFLAGS = -std=c99 -D_POSIX_C_SOURCE -fPIC -g -Wall -pedantic \
 # optimization flags
 CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING
 
-hvault.so: hvault.o interpolate.o hdf.o metaload.o plan.o utils.o
+hvault.so: hvault.o interpolate.o hdf.o metaload.o plan.o utils.o predicates.o
 	gcc $(CFLAGS) -shared -Wl,-soname,$@ -o $@ $^ $(LIB)
 
 metaload.o: metaload.c
@@ -29,6 +29,9 @@ plan.o: plan.c hvault.h
 
 hvault.o: hvault.c hvault.h hdf.h
 	gcc $(CFLAGS) $(INC) -o $@ -c $<
+
+predicates.o: predicates.c hvault.h hdf.h
+	gcc $(CFLAGS) $(INC) -o $@ -c $<	
 
 clean:
 	rm -rf *.o *.so
