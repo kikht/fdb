@@ -38,34 +38,6 @@
  * This file includes routines involved in query planning
  */
 
-typedef enum 
-{  
-    HvaultGeomInvalidOp = -1,
-
-    HvaultGeomOverlaps = 0,/* &&  */
-    HvaultGeomContains,    /* ~   */
-    HvaultGeomWithin,      /* @   */
-    HvaultGeomSame,        /* ~=  */
-    HvaultGeomOverleft,    /* &<  */
-    HvaultGeomOverright,   /* &>  */
-    HvaultGeomOverabove,   /* |&> */
-    HvaultGeomOverbelow,   /* &<| */
-    HvaultGeomLeft,        /* <<  */
-    HvaultGeomRight,       /* >>  */
-    HvaultGeomAbove,       /* |>> */
-    HvaultGeomBelow,       /* <<| */
-
-    HvaultGeomNumRealOpers,
-
-    /* fake commutators */
-    HvaultGeomCommLeft = HvaultGeomNumRealOpers,
-    HvaultGeomCommRight,
-    HvaultGeomCommUp,
-    HvaultGeomCommDown,
-
-    HvaultGeomNumAllOpers,
-} HvaultGeomOperator;
-
 typedef struct 
 {
     Index relid;      
@@ -79,10 +51,11 @@ typedef struct
 typedef struct 
 {
     HvaultTableInfo const *table;
-    List *catalog_quals;
+    List *own_quals;
     List *fdw_expr;
     char const * filter;
     char const * sort;
+    List *predicates;
 } HvaultPathData;
 
 typedef struct
@@ -92,6 +65,20 @@ typedef struct
     StringInfoData query;
     bool first_qual;
 } HvaultDeparseContext;
+
+typedef struct {
+    HvaultGeomOperator op;
+    bool isneg;
+} GeomPredicateDesc;
+
+typedef struct {
+    RestrictInfo *rinfo;
+    Var *var;
+    Expr *arg;
+    HvaultColumnType coltype;
+    GeomPredicateDesc pred;
+    GeomPredicateDesc catalog_pred;
+} GeomOpQual;
 
 static int  get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs);
 static void getSortPathKeys(PlannerInfo const *root,
@@ -109,7 +96,9 @@ static void extractCatalogQuals(PlannerInfo *root,
                                 List **catalog_ec_vars,
                                 List **footprint_quals,
                                 List **footprint_joins);
-static bool isFootprintQual(Expr *expr, const HvaultTableInfo *table);
+static bool isFootprintQual(Expr *expr, 
+                            const HvaultTableInfo *table, 
+                            GeomOpQual *qual);
 static void addForeignPaths(PlannerInfo *root, 
                             RelOptInfo *baserel, 
                             HvaultTableInfo const *table,
@@ -129,8 +118,10 @@ static void generateJoinPath(PlannerInfo *root,
                              List *footprint_joins,
                              Relids relids,
                              List **considered_relids);
+static int insertFdwExpr(List **fdw_expr, Expr *node);
 static void deparseExpr(Expr *node, HvaultDeparseContext *ctx);
-static void deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx);
+static void deparseFootprintExpr(GeomOpQual *qual, 
+                                 HvaultDeparseContext *ctx);
 static void addDeparseItem(HvaultDeparseContext *ctx);
 
 /* 
@@ -236,7 +227,11 @@ hvaultGetPaths(PlannerInfo *root,
     
     /* Create parametrized join paths */
     all_joins = list_copy(catalog_joins);
-    all_joins = list_concat(all_joins, footprint_joins);
+    foreach(l, footprint_joins)
+    {
+        GeomOpQual *qual = lfirst(l);
+        all_joins = lappend(all_joins, qual->rinfo);
+    }
     considered_clauses = list_length(all_joins) + list_length(catalog_ec);
     foreach(l, all_joins)
     {
@@ -355,7 +350,7 @@ hvaultGetPlan(PlannerInfo *root,
     StringInfoData query;
 
     elog(DEBUG1, "Selected path quals: %s", 
-         nodeToString(fdw_private->catalog_quals));
+         nodeToString(fdw_private->own_quals));
 
     /* Prepare catalog query */
     initStringInfo(&query);
@@ -373,7 +368,7 @@ hvaultGetPlan(PlannerInfo *root,
     foreach(l, scan_clauses)
     {
         RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        if (!list_member_ptr(fdw_private->catalog_quals, rinfo))
+        if (!list_member_ptr(fdw_private->own_quals, rinfo))
         {
             rest_clauses = lappend(rest_clauses, rinfo);
         }
@@ -398,6 +393,7 @@ hvaultGetPlan(PlannerInfo *root,
     }
     fdw_plan_private = lappend(fdw_plan_private, makeString(query.data));
     fdw_plan_private = lappend(fdw_plan_private, coltypes);
+    fdw_plan_private = lappend(fdw_plan_private, fdw_private->predicates);
 
     return make_foreignscan(tlist, rest_clauses, baserel->relid, 
                             fdw_private->fdw_expr, fdw_plan_private);
@@ -708,6 +704,7 @@ extractCatalogQuals(PlannerInfo *root,
                     List **footprint_joins)
 {
     ListCell *l;
+    GeomOpQual *fqual = palloc(sizeof(GeomOpQual));
 
     foreach(l, baserel->baserestrictinfo)
     {
@@ -718,11 +715,13 @@ extractCatalogQuals(PlannerInfo *root,
                  nodeToString(rinfo->clause));
             *catalog_quals = lappend(*catalog_quals, rinfo);
         } 
-        else if (isFootprintQual(rinfo->clause, table))
+        else if (isFootprintQual(rinfo->clause, table, fqual))
         {
             elog(DEBUG2, "Detected footprint qual %s", 
                  nodeToString(rinfo->clause));
-            *footprint_quals = lappend(*footprint_quals, rinfo);
+            fqual->rinfo = rinfo;
+            *footprint_quals = lappend(*footprint_quals, fqual);
+            fqual = palloc(sizeof(GeomOpQual));
         }
     }
 
@@ -733,13 +732,16 @@ extractCatalogQuals(PlannerInfo *root,
         {
             *catalog_joins = lappend(*catalog_joins, rinfo);
         }
-        else if (isFootprintQual(rinfo->clause, table))
+        else if (isFootprintQual(rinfo->clause, table, fqual))
         {
             elog(DEBUG2, "Detected footprint join %s", 
                  nodeToString(rinfo->clause));
-            *footprint_joins = lappend(*footprint_joins, rinfo);
+            fqual->rinfo = rinfo;
+            *footprint_joins = lappend(*footprint_joins, fqual);
+            fqual = palloc(sizeof(GeomOpQual));
         }
     }
+    pfree(fqual);
 
     foreach(l, root->eq_classes)
     {
@@ -806,6 +808,12 @@ getQueryCosts(char const *query,
     MemoryContextDelete(memctx);
 }
 
+static List *
+predicateToList(HvaultGeomPredicate *p)
+{
+    return list_make4_int(p->coltype, p->op, p->argno, p->isneg);
+}
+
 static void addForeignPaths(PlannerInfo *root, 
                            RelOptInfo *baserel, 
                            HvaultTableInfo const *table,
@@ -824,7 +832,11 @@ static void addForeignPaths(PlannerInfo *root,
     int catwidth;
     int nargs, argno;
     Oid *argtypes;
+    List *predicates;
+    List *own_quals;
 
+    predicates = NIL;
+    own_quals = list_copy(catalog_quals);
     /* Prepare catalog query */
     deparse_ctx.table = table;
     deparse_ctx.fdw_expr = NIL;
@@ -843,9 +855,20 @@ static void addForeignPaths(PlannerInfo *root,
     }
     foreach(l, footprint_quals)
     {
-        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        addDeparseItem(&deparse_ctx);
-        deparseFootprintExpr(rinfo->clause, &deparse_ctx);
+        GeomOpQual *qual = (GeomOpQual *) lfirst(l);
+        HvaultGeomPredicate pred;
+        if (qual->catalog_pred.op != HvaultGeomInvalidOp)
+        {
+            RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+            addDeparseItem(&deparse_ctx);
+            deparseFootprintExpr(qual, &deparse_ctx);
+        }
+        pred.coltype = qual->coltype;
+        pred.op = qual->pred.op;
+        pred.isneg = qual->pred.isneg;
+        pred.argno = insertFdwExpr(&deparse_ctx.fdw_expr, qual->arg);
+        predicates = lappend(predicates, predicateToList(&pred));
+        own_quals = lappend(own_quals, qual->rinfo);
     }
 
     nargs = list_length(deparse_ctx.fdw_expr);
@@ -883,10 +906,11 @@ static void addForeignPaths(PlannerInfo *root,
 
             path_data = palloc(sizeof(HvaultPathData));    
             path_data->table = table;
-            path_data->catalog_quals = catalog_quals;
+            path_data->own_quals = own_quals;
             path_data->filter = deparse_ctx.query.data;
             path_data->sort = sort_qual;
             path_data->fdw_expr = deparse_ctx.fdw_expr;
+            path_data->predicates = predicates;
 
             path = create_foreignscan_path(root, baserel, rows, 
                                            startup_cost, total_cost, pathkeys, 
@@ -932,9 +956,9 @@ generateJoinPath(PlannerInfo *root,
 
     foreach(l, footprint_joins)
     {
-        RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        if (bms_is_subset(rinfo->clause_relids, relids))
-            fquals = lappend(fquals, rinfo);   
+        GeomOpQual *qual = (GeomOpQual *) lfirst(l);
+        if (bms_is_subset(qual->rinfo->clause_relids, relids))
+            fquals = lappend(fquals, qual);   
     }
 
     ec_quals = generate_join_implied_equalities(root, relids, req_outer, 
@@ -960,6 +984,23 @@ generateJoinPath(PlannerInfo *root,
  * -----------------------------------
  */
 
+static int 
+insertFdwExpr(List **fdw_expr, Expr *node)
+{
+    ListCell *l;
+    int idx = 0;
+
+    foreach(l, *fdw_expr)
+    {
+        if (lfirst(l) == node)
+            break;
+        idx++;
+    }
+    if (idx == list_length(*fdw_expr))
+        *fdw_expr = lappend(*fdw_expr, node);
+    return idx;
+}
+
 
 /* 
  * Deparse expression as runtime computable parameter. 
@@ -968,16 +1009,7 @@ generateJoinPath(PlannerInfo *root,
 static void 
 deparseParameter(Expr *node, HvaultDeparseContext *ctx)
 {
-    ListCell *l;
-    int idx = 0;
-
-    foreach(l, ctx->fdw_expr)
-    {
-        if (lfirst(l) == node)
-            break;
-        idx++;
-    }
-    ctx->fdw_expr = lappend(ctx->fdw_expr, node);
+    int idx = insertFdwExpr(&ctx->fdw_expr, node);
     appendStringInfo(&ctx->query, "$%d", idx + 1);
 }
 
@@ -1475,15 +1507,25 @@ addDeparseItem(HvaultDeparseContext *ctx)
  * -----------------------------------
  */
 
-static char * geomopstr[HvaultGeomNumAllOpers] = {
-    "&&", "&<", "&>", "|&>", "&<|", "<<", ">>", "|>>", "<<|", "~", "@", "~=",
-          "&<", "&>", "|&>", "&<|"
-};
+char * geomopstr[HvaultGeomNumAllOpers] = {
 
-typedef struct {
-    HvaultGeomOperator op;
-    bool isneg;
-} HvaultGeomPredicate;
+    /* HvaultGeomOverlaps  -> */ "&&",
+    /* HvaultGeomContains  -> */ "~",
+    /* HvaultGeomWithin    -> */ "@",
+    /* HvaultGeomSame      -> */ "~=",
+    /* HvaultGeomOverleft  -> */ "&<",
+    /* HvaultGeomOverright -> */ "&>",
+    /* HvaultGeomOverabove -> */ "|&>",
+    /* HvaultGeomOverbelow -> */ "&<|",
+    /* HvaultGeomLeft      -> */ "<<",
+    /* HvaultGeomRight     -> */ ">>",
+    /* HvaultGeomAbove     -> */ "|>>",
+    /* HvaultGeomBelow     -> */ "<<|",
+    /* HvaultGeomCommLeft  -> */ "&<",
+    /* HvaultGeomCommRight -> */ "&>",
+    /* HvaultGeomCommAbove -> */ "|&>",
+    /* HvaultGeomCommBelow -> */ "&<|",
+};
 
 static HvaultGeomOperator geomopcomm[HvaultGeomNumAllOpers] = 
 {
@@ -1493,19 +1535,19 @@ static HvaultGeomOperator geomopcomm[HvaultGeomNumAllOpers] =
     /* HvaultGeomSame      -> */ HvaultGeomSame,
     /* HvaultGeomOverleft  -> */ HvaultGeomCommLeft,
     /* HvaultGeomOverright -> */ HvaultGeomCommRight,
-    /* HvaultGeomOverabove -> */ HvaultGeomCommUp,
-    /* HvaultGeomOverbelow -> */ HvaultGeomCommDown,
+    /* HvaultGeomOverabove -> */ HvaultGeomCommAbove,
+    /* HvaultGeomOverbelow -> */ HvaultGeomCommBelow,
     /* HvaultGeomLeft      -> */ HvaultGeomRight,
     /* HvaultGeomRight     -> */ HvaultGeomLeft,
     /* HvaultGeomAbove     -> */ HvaultGeomBelow,
     /* HvaultGeomBelow     -> */ HvaultGeomAbove,
     /* HvaultGeomCommLeft  -> */ HvaultGeomOverleft,
     /* HvaultGeomCommRight -> */ HvaultGeomOverright,
-    /* HvaultGeomCommUp    -> */ HvaultGeomOverabove,
-    /* HvaultGeomCommDown  -> */ HvaultGeomOverbelow,
+    /* HvaultGeomCommAbove -> */ HvaultGeomOverabove,
+    /* HvaultGeomCommBelow -> */ HvaultGeomOverbelow,
 };
 
-static HvaultGeomPredicate geomopmap[HvaultGeomNumAllOpers] = 
+static GeomPredicateDesc geomopmap[2*HvaultGeomNumAllOpers] = 
 {
     /* HvaultGeomOverlaps  -> */ { HvaultGeomOverlaps,  false },
     /* HvaultGeomContains  -> */ { HvaultGeomContains,  false },
@@ -1521,12 +1563,11 @@ static HvaultGeomPredicate geomopmap[HvaultGeomNumAllOpers] =
     /* HvaultGeomBelow     -> */ { HvaultGeomOverabove, true  },
     /* HvaultGeomCommLeft  -> */ { HvaultGeomCommLeft,  false },
     /* HvaultGeomCommRight -> */ { HvaultGeomCommRight, false },
-    /* HvaultGeomCommUp    -> */ { HvaultGeomCommUp,    false },
-    /* HvaultGeomCommDown  -> */ { HvaultGeomCommDown,  false },
-};
+    /* HvaultGeomCommAbove -> */ { HvaultGeomCommAbove, false },
+    /* HvaultGeomCommBelow -> */ { HvaultGeomCommBelow, false },
 
-static HvaultGeomPredicate geomnegopmap[HvaultGeomNumAllOpers] = 
-{
+    /* Negative predicate map */
+
     /* HvaultGeomOverlaps  -> */ { HvaultGeomWithin,    true  },
     /* HvaultGeomContains  -> */ { HvaultGeomInvalidOp, false },
     /* HvaultGeomWithin    -> */ { HvaultGeomWithin,    true  },
@@ -1541,9 +1582,15 @@ static HvaultGeomPredicate geomnegopmap[HvaultGeomNumAllOpers] =
     /* HvaultGeomBelow     -> */ { HvaultGeomBelow,     true  },
     /* HvaultGeomCommLeft  -> */ { HvaultGeomInvalidOp, false },
     /* HvaultGeomCommRight -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomCommUp    -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomCommDown  -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomCommAbove -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomCommBelow -> */ { HvaultGeomInvalidOp, false },
 };
+
+static inline GeomPredicateDesc
+mapGeomPredicate(GeomPredicateDesc const p)
+{
+    return geomopmap[HvaultGeomNumAllOpers * p.isneg + p.op];
+}
 
 static Oid
 getGeometryOpOid(char const *opname, SPIPlanPtr prep_stmt)
@@ -1644,10 +1691,7 @@ isFootprintOpArgs(Expr *varnode,
 static bool
 isFootprintOp(Expr *expr, 
               const HvaultTableInfo *table, 
-              Var **var, 
-              Expr **arg, 
-              HvaultGeomOperator *oper,
-              HvaultColumnType *coltype)
+              GeomOpQual *qual)
 {
     OpExpr *opexpr;
     Expr *first, *second;
@@ -1660,22 +1704,22 @@ isFootprintOp(Expr *expr,
     if (list_length(opexpr->args) != 2)
         return false;
 
-    *oper = getGeometryOper(opexpr->opno, table);
-    if (*oper == HvaultGeomInvalidOp)
+    qual->pred.op = getGeometryOper(opexpr->opno, table);
+    if (qual->pred.op == HvaultGeomInvalidOp)
         return false;
 
     first = linitial(opexpr->args);
     second = lsecond(opexpr->args);
-    if (isFootprintOpArgs(first, second, table, coltype))
+    if (isFootprintOpArgs(first, second, table, &qual->coltype))
     {
-        *var = (Var *) first;
-        *arg = second;
+        qual->var = (Var *) first;
+        qual->arg = second;
     }
-    else if (isFootprintOpArgs(second, first, table, coltype))
+    else if (isFootprintOpArgs(second, first, table, &qual->coltype))
     {
-        *var = (Var *) second;
-        *arg = first;
-        *oper = geomopcomm[*oper];
+        qual->var = (Var *) second;
+        qual->arg = first;
+        qual->pred.op = geomopcomm[qual->pred.op];
     }
     else 
     {
@@ -1683,19 +1727,17 @@ isFootprintOp(Expr *expr,
         return false;
     }
 
-    if (!isCatalogQual(*arg, table))
+    if (!isCatalogQual(qual->arg, table))
         return false;
 
+    
     return true;
 }
 
 static bool 
 isFootprintNegOp(Expr *expr, 
                  const HvaultTableInfo *table,
-                 Var **var, 
-                 Expr **arg, 
-                 HvaultGeomOperator *oper,
-                 HvaultColumnType *coltype)
+                 GeomOpQual *qual)
 {
     BoolExpr *boolexpr;
 
@@ -1710,76 +1752,63 @@ isFootprintNegOp(Expr *expr,
     if (list_length(boolexpr->args) != 1)
         return false;
 
-    if (!isFootprintOp(linitial(boolexpr->args), table, 
-                       var, arg, oper, coltype))
-        return false;
-
-    if (geomnegopmap[*oper].op == HvaultGeomInvalidOp)
+    if (!isFootprintOp(linitial(boolexpr->args), table, qual))
         return false;
 
     return true;
 }
 
 static bool
-isFootprintQual(Expr *expr, const HvaultTableInfo *table)
+isFootprintQual(Expr *expr, const HvaultTableInfo *table, GeomOpQual *qual)
 {
-    Var *var = NULL;
-    Expr *arg = NULL;
-    HvaultColumnType type;
-    HvaultGeomOperator oper;
+    bool res = false;
+    if (isFootprintOp(expr, table, qual)) 
+    {
+        qual->pred.isneg = false;
+        res = true;
+    }
 
-    if (isFootprintOp(expr, table, &var, &arg, &oper, &type))
+    if (isFootprintNegOp(expr, table, qual)) 
+    {
+        qual->pred.isneg = true;
+        res = true;
+    }
+
+    if (res)
+    {
+        qual->catalog_pred = mapGeomPredicate(qual->pred);
         return true;
-
-    if (isFootprintNegOp(expr, table, &var, &arg, &oper, &type))
-        return true;
-
-    return false;
+    }
+    else 
+    {
+        return false;
+    }
 }
 
 static void
-deparseFootprintExpr(Expr *node, HvaultDeparseContext *ctx)
+deparseFootprintExpr(GeomOpQual *qual, HvaultDeparseContext *ctx)
 {
-    Var *var = NULL;
-    Expr *arg = NULL;
-    HvaultColumnType type;
-    HvaultGeomOperator oper;
-    HvaultGeomPredicate pred = { HvaultGeomInvalidOp, false };
+    Assert(qual->catalog_pred.op != HvaultGeomInvalidOp);
 
-    if (isFootprintOp(node, ctx->table, &var, &arg, &oper, &type)) 
-    {
-        pred = geomopmap[oper];
-    } 
-    else if (isFootprintNegOp(node, ctx->table, &var, &arg, &oper, &type))
-    {
-        pred = geomnegopmap[oper];
-    }
-
-    if (pred.op == HvaultGeomInvalidOp)
-    {
-        elog(ERROR, "unsupported expression type for footprint deparse: %d",
-             (int) nodeTag(node));
-        return; /* Will never reach this */   
-    }
-
-    if (pred.isneg)
+    if (qual->catalog_pred.isneg)
         appendStringInfoString(&ctx->query, "NOT ");
     
     appendStringInfoChar(&ctx->query, '(');
-    if (pred.op < HvaultGeomNumRealOpers) 
+    if (qual->catalog_pred.op < HvaultGeomNumRealOpers) 
     {
         appendStringInfoString(&ctx->query, "footprint ");
-        appendStringInfoString(&ctx->query, geomopstr[pred.op]);
+        appendStringInfoString(&ctx->query, geomopstr[qual->catalog_pred.op]);
         appendStringInfoChar(&ctx->query, ' ');
-        deparseExpr(arg, ctx);
+        deparseExpr(qual->arg, ctx);
     }
     else
     {
-        deparseExpr(arg, ctx);  
+        deparseExpr(qual->arg, ctx);  
         appendStringInfoChar(&ctx->query, ' ');
-        appendStringInfoString(&ctx->query, geomopstr[pred.op]);
+        appendStringInfoString(&ctx->query, geomopstr[qual->catalog_pred.op]);
         appendStringInfoString(&ctx->query, " footprint");
     }
     appendStringInfoChar(&ctx->query, ')');
 }
+
 

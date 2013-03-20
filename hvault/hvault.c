@@ -43,9 +43,13 @@ static bool hvaultAnalyze(Relation relation,
                           BlockNumber *totalpages);
 
 /* Initialization functions */
-static HvaultExecState *makeExecState(List *coltypes, MemoryContext memctx);
-static HvaultCatalogCursor *makeCatalogCursor(char const *query,
-                                              PlanState *plan,
+static HvaultGeomPredicate *listToPredicate(List *p);
+static HvaultExecState *makeExecState(List *coltypes, 
+                                      MemoryContext memctx, 
+                                      List *fdw_expr, 
+                                      PlanState *plan,
+                                      List *predicates);
+static HvaultCatalogCursor *makeCatalogCursor(char const *query, 
                                               List *fdw_expr);
 static void assignSDSBuffers(HvaultExecState *state, 
                              Oid relid, 
@@ -53,7 +57,9 @@ static void assignSDSBuffers(HvaultExecState *state,
 static void  check_column_types(List *coltypes, TupleDesc tupdesc);
 
 /* Iteration functions */
-static void startCatalogCursor(HvaultCatalogCursor *cursor);
+static void startCatalogCursor(HvaultCatalogCursor *cursor, 
+                               List *fdw_expr, 
+                               ExprContext *expr_ctx);
 static bool fetch_next_file(HvaultExecState *scan);
 static void fetch_next_line(HvaultExecState *scan);
 static void calc_next_footprint(HvaultExecState const *scan, 
@@ -110,10 +116,17 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
        the state of the ForeignScanState node can be inspected to provide run-
        time statistics in the EXPLAIN ANALYZE case. */    
 
-    ForeignScan *plan = (ForeignScan *) node->ss.ps.plan;
-    List *fdw_plan_private = plan->fdw_private;
-    Oid foreigntableid = RelationGetRelid(node->ss.ss_currentRelation);
-    char *catalog = hvaultGetTableOption(foreigntableid, "catalog");
+    ForeignScan *plan;
+    List *fdw_plan_private;
+    Oid foreigntableid;
+    char *catalog;
+    List *predicates, *pred_str;
+    ListCell *l;
+
+    plan = (ForeignScan *) node->ss.ps.plan;
+    fdw_plan_private = plan->fdw_private;
+    foreigntableid = RelationGetRelid(node->ss.ss_currentRelation);
+    catalog = hvaultGetTableOption(foreigntableid, "catalog");
     if (catalog)
     {
         Value *query = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
@@ -125,6 +138,46 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
         if (filename != NULL)
             ExplainPropertyText("Single file", filename, es);
     }
+
+    predicates = list_nth(fdw_plan_private, HvaultPlanPredicates);
+    pred_str = NIL;
+    foreach(l, predicates)
+    {
+        HvaultGeomPredicate *pred = listToPredicate((List *) lfirst(l));
+        StringInfoData str;
+        char *colname;
+        initStringInfo(&str);
+
+        switch (pred->coltype) {
+            case HvaultColumnFootprint:
+                colname = "footprint";
+                break;
+            case HvaultColumnPoint:
+                colname = "point";
+                break;
+            default:
+                colname = "<unknown>";
+        }
+
+        if (pred->isneg)
+            appendStringInfoString(&str, "NOT ");
+    
+        if (pred->op < HvaultGeomNumRealOpers) 
+        {
+            appendStringInfo(&str, "%s %s $%d", 
+                             colname, geomopstr[pred->op], pred->argno+1);
+        }
+        else
+        {
+            appendStringInfo(&str, "$%d %s %s", 
+                             pred->argno+1, geomopstr[pred->op], colname);
+        }
+        pred_str = lappend(pred_str, str.data);
+
+        pfree(pred);
+    }
+    if (list_length(pred_str) > 0)
+        ExplainPropertyList("Geometry predicates", pred_str, es);
 }
 
 static void 
@@ -147,16 +200,17 @@ hvaultBegin(ForeignScanState *node, int eflags)
 
     Assert(list_length(fdw_plan_private) == HvaultPlanNumParams);
     state = makeExecState(list_nth(fdw_plan_private, HvaultPlanColtypes), 
-                          node->ss.ps.state->es_query_cxt);
+                          node->ss.ps.state->es_query_cxt,
+                          plan->fdw_exprs,
+                          &node->ss.ps,
+                          list_nth(fdw_plan_private, HvaultPlanPredicates));
     check_column_types(state->coltypes, tupdesc);
 
     catalog = hvaultGetTableOption(foreigntableid, "catalog");
     if (catalog)
     {
         Value *query = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
-        state->cursor = makeCatalogCursor(strVal(query), 
-                                          &node->ss.ps, 
-                                          plan->fdw_exprs);
+        state->cursor = makeCatalogCursor(strVal(query), plan->fdw_exprs);
     }
     else
     {
@@ -183,17 +237,17 @@ hvaultIterate(ForeignScanState *node)
     /*TupleDesc tupdesc = slot->tts_tupleDescriptor;*/
     HvaultExecState *fdw_exec_state = (HvaultExecState *) node->fdw_state;
 
-    if (fdw_exec_state->cur_line == 0 && fdw_exec_state->cur_sample == 0)
-    {
-        elog(DEBUG1, "first hvaultIterate");
-    }
-
     ExecClearTuple(slot);
 
     /* Next line needed? (initial state -1 == -1) */
-    if (fdw_exec_state->cur_sample == fdw_exec_state->file.num_samples)
+    while (fdw_exec_state->cur_sel == fdw_exec_state->file.sel_size)
     {
-        fdw_exec_state->cur_sample = 0;
+        ListCell *l;
+        size_t *src_sel;
+
+        
+        fdw_exec_state->cur_sel = 0;
+        fdw_exec_state->cur_sample = -1;
         fdw_exec_state->cur_line++;
         /* Next file needed? */
         if (fdw_exec_state->cur_line >= fdw_exec_state->file.num_lines) {
@@ -232,14 +286,60 @@ hvaultIterate(ForeignScanState *node)
             }
         }
         fetch_next_line(fdw_exec_state);
+
+        /* Predicate calculation */
+        src_sel = NULL;
+        fdw_exec_state->file.sel_size = fdw_exec_state->file.num_samples;
+        foreach(l, fdw_exec_state->predicates)
+        {
+            HvaultGeomPredicate *p = (HvaultGeomPredicate *) lfirst(l);
+            ExprState *expr = list_nth(fdw_exec_state->fdw_expr, p->argno);
+            bool isnull;
+            Datum argdatum = ExecEvalExpr(expr, fdw_exec_state->expr_ctx, 
+                                          &isnull, NULL);
+            GSERIALIZED *arggeom = (GSERIALIZED*) PG_DETOAST_DATUM(argdatum);
+            GBOX arg;
+            if (gserialized_get_gbox_p(arggeom, &arg) == LW_FAILURE)
+            {
+                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                                errmsg("Can't get GBOX from predicate arg")));
+                return NULL; /* Will never reach here */
+            }
+
+            fdw_exec_state->file.sel_size = 
+                    hvaultGeomPredicate(p->coltype, 
+                                        p->op, 
+                                        p->isneg, 
+                                        fdw_exec_state, 
+                                        &arg, 
+                                        fdw_exec_state->file.sel_size, 
+                                        src_sel,
+                                        fdw_exec_state->file.sel);
+            src_sel = fdw_exec_state->file.sel;
+            if (fdw_exec_state->file.sel_size <= 0)
+            {
+                break;
+            }
+
+        }
     }
 
+    if (fdw_exec_state->file.sel_size < fdw_exec_state->file.num_samples)
+    {
+        fdw_exec_state->cur_sample = 
+            fdw_exec_state->file.sel[fdw_exec_state->cur_sel];
+    }
+    else
+    {
+        fdw_exec_state->cur_sample = fdw_exec_state->cur_sel;
+    }
+    fdw_exec_state->cur_sel++;
+    
     /* Fill tuple */
     fill_tuple(fdw_exec_state);
     slot->tts_isnull = fdw_exec_state->nulls;
     slot->tts_values = fdw_exec_state->values;
     ExecStoreVirtualTuple(slot);
-    fdw_exec_state->cur_sample++;
     return slot;
 }
 
@@ -288,6 +388,7 @@ hvaultReScan(ForeignScanState *node)
     state->cur_file = -1;
     state->cur_line = -1;
     state->cur_sample = -1;
+    state->cur_sel = -1;
 }
 
 
@@ -432,7 +533,7 @@ acquire_sample_rows(Relation relation,
         return 0;
 
     coltypes = hvaultGetAllColumns(relation);
-    state = makeExecState(coltypes, CurrentMemoryContext);
+    state = makeExecState(coltypes, CurrentMemoryContext, NIL, NULL, NIL);
 
     num_files = targrows / 100;
     if (num_files < 5)
@@ -444,7 +545,7 @@ acquire_sample_rows(Relation relation,
                      HVAULT_CATALOG_QUERY_PREFIX,
                      catalog,
                      num_files);
-    state->cursor = makeCatalogCursor(query.data, NULL, NIL);
+    state->cursor = makeCatalogCursor(query.data, NIL);
     
     check_column_types(state->coltypes, tupdesc);
     assignSDSBuffers(state, foreigntableid, tupdesc);
@@ -816,7 +917,7 @@ fetch_next_file(HvaultExecState *scan)
 
     if (scan->cursor->file_cursor_name == NULL)
     {
-        startCatalogCursor(scan->cursor);
+        startCatalogCursor(scan->cursor, scan->fdw_expr, scan->expr_ctx);
     } 
     else 
     {
@@ -884,9 +985,7 @@ fetch_next_file(HvaultExecState *scan)
 }
 
 static HvaultCatalogCursor *
-makeCatalogCursor(char const *query,
-                  PlanState *plan,
-                  List *fdw_expr)
+makeCatalogCursor(char const *query, List *fdw_expr)
 {
     HvaultCatalogCursor *cursor;
     ListCell *l;
@@ -894,44 +993,38 @@ makeCatalogCursor(char const *query,
     cursor = palloc(sizeof(HvaultCatalogCursor));
 
     cursor->query = query;
-    cursor->fdw_expr = NIL;
-    cursor->expr_ctx = NULL;
     cursor->file_cursor_name = NULL;
     cursor->prep_stmt = NULL;
     cursor->argtypes = NULL;
     cursor->argvals = NULL;
     cursor->argnulls = NULL;
 
-    if (plan != NULL)
+    int pos = 0;
+    int nargs = list_length(fdw_expr);
+    cursor->argtypes = palloc(sizeof(Oid) * nargs);
+    cursor->argvals = palloc(sizeof(Datum) * nargs);
+    cursor->argnulls = palloc(sizeof(char) * nargs);
+    foreach(l, fdw_expr)
     {
-        int pos = 0;
-        int nargs = list_length(fdw_expr);
-        cursor->argtypes = palloc(sizeof(Oid) * nargs);
-        cursor->argvals = palloc(sizeof(Datum) * nargs);
-        cursor->argnulls = palloc(sizeof(char) * nargs);
-        cursor->expr_ctx = plan->ps_ExprContext;
-        foreach(l, fdw_expr)
-        {
-            Expr *expr = (Expr *) lfirst(l);
-            cursor->fdw_expr = lappend(cursor->fdw_expr, 
-                                       ExecInitExpr(expr, plan));
-            cursor->argtypes[pos] = exprType((Node *) expr);
-            pos++;
-        }        
+        Expr *expr = (Expr *) lfirst(l);
+        cursor->argtypes[pos] = exprType((Node *) expr);
+        pos++;
     }
 
     return cursor;
 }
 
 static void 
-startCatalogCursor(HvaultCatalogCursor *cursor)
+startCatalogCursor(HvaultCatalogCursor *cursor, 
+                   List *fdw_expr, 
+                   ExprContext *expr_ctx)
 {
     ListCell *l;
     int nargs, pos;
     Portal file_cursor;
         
     Assert(cursor->query);
-    nargs = list_length(cursor->fdw_expr);
+    nargs = list_length(fdw_expr);
 
     elog(DEBUG1, "file cursor initialization");
     if (cursor->prep_stmt == NULL)
@@ -953,12 +1046,12 @@ startCatalogCursor(HvaultCatalogCursor *cursor)
     }
 
     pos = 0;
-    foreach(l, cursor->fdw_expr)
+    foreach(l, fdw_expr)
     {
         bool isnull;
         Assert(IsA(lfirst(l), ExprState));
         ExprState *expr = (ExprState *) lfirst(l);
-        cursor->argvals[pos] = ExecEvalExpr(expr, cursor->expr_ctx, 
+        cursor->argvals[pos] = ExecEvalExpr(expr, expr_ctx, 
                                             &isnull, NULL);
         cursor->argnulls[pos] = isnull ? 'n' : ' ';
         pos++;
@@ -984,21 +1077,55 @@ initHDFFile(HvaultHDFFile *file, MemoryContext memctx)
     file->prevbrdlon = NULL;
     file->nextbrdlat = NULL;
     file->nextbrdlon = NULL;
+    file->sel = NULL;
+    file->sel_size = -1;
     file->sd_id = FAIL;
     file->num_lines = -1;
     file->num_samples = -1;
     file->open_time = 0;
 }
 
-static HvaultExecState *
-makeExecState(List *coltypes, MemoryContext memctx)
+static HvaultGeomPredicate *
+listToPredicate(List *p)
 {
+    Assert(list_length(p) == HvaultPredicateNumParams);
+    HvaultGeomPredicate *res = palloc(sizeof(HvaultGeomPredicate));
+    res->coltype = list_nth_int(p, HvaultPredicateColtype);
+    res->op      = list_nth_int(p, HvaultPredicateGeomOper);
+    res->argno   = list_nth_int(p, HvaultPredicateArgno);
+    res->isneg   = list_nth_int(p, HvaultPredicateIsNegative);
+    return res;
+}
+
+static HvaultExecState *
+makeExecState(List *coltypes, 
+              MemoryContext memctx, 
+              List *fdw_expr, 
+              PlanState *plan,
+              List *predicates)
+{
+    ListCell *l;
     HvaultExecState *state = palloc(sizeof(HvaultExecState));
 
     state->natts = list_length(coltypes);
     state->coltypes = coltypes;
     state->has_footprint = false;
     state->scan_size = 10;
+
+    state->expr_ctx = plan->ps_ExprContext;
+    state->fdw_expr = NIL;
+    foreach(l, fdw_expr)
+    {
+        Expr *expr = (Expr *) lfirst(l);
+        state->fdw_expr = lappend(state->fdw_expr, ExecInitExpr(expr, plan));
+    }
+
+    state->predicates = NIL;
+    foreach(l, predicates)    
+    {
+        List *p = (List *) lfirst(l);
+        state->predicates = lappend(state->predicates, listToPredicate(p));
+    }
 
     state->cursor = NULL;
     initHDFFile(&state->file, memctx);
@@ -1010,6 +1137,7 @@ makeExecState(List *coltypes, MemoryContext memctx)
     state->cur_file = -1;
     state->cur_line = -1;
     state->cur_sample = -1;
+    state->cur_sel = -1;
 
     state->values = palloc(sizeof(Datum) * state->natts);
     state->nulls = palloc(sizeof(bool) * state->natts);

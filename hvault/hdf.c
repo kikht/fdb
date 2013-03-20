@@ -150,6 +150,9 @@ hdf_file_open(HvaultHDFFile *file,
                                file->num_samples);
         }
     }
+    /* Allocate predicate selection column */
+    file->sel = palloc(sizeof(size_t) * file->num_samples);
+    file->sel_size = -1;
     MemoryContextSwitchTo(oldmemcxt);
     return true;
 }
@@ -186,6 +189,8 @@ hdf_file_close(HvaultHDFFile *file)
                        file->nextbrdlon = NULL;
     file->num_samples = -1;
     file->num_lines = -1;
+    file->sel_size = -1;
+    file->sel = NULL;
     elog(DEBUG1, "File processed in %f sec", 
          ((float) (clock() - file->open_time)) / CLOCKS_PER_SEC);
 }
