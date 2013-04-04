@@ -4,7 +4,7 @@ INC=-I$(POSTGRES_PREFIX)/include/server/
 HDFLIB=-L/usr/lib{,64}/hdf -lmfhdf -ldf -ljpeg -lz 
 LIB=-l:$(POSTGRES_PREFIX)/lib/postgis-2.0.so $(HDFLIB)
 	
-CFLAGS = -std=c99 -D_POSIX_C_SOURCE -fPIC -g -Wall -pedantic \
+CFLAGS = -D_POSIX_C_SOURCE -fPIC -g -Wall -pedantic \
 		 -DUSE_ASSERT_CHECKING
 # optimization flags
 CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING
