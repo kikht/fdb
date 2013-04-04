@@ -188,9 +188,9 @@ get_modis_attr(int32_t sd_id, char const * attr, StringInfo result)
         return false;
     }
 
-    if (result->maxlen <= size)
+    if (result->len <= size)
     {
-        enlargeStringInfo(result, size + 1 - result->maxlen);
+        enlargeStringInfo(result, size + 1 - result->len);
     }
 
     if (SDreadattr(sd_id, att_idx, result->data) == FAIL)
