@@ -29,7 +29,27 @@ get_column_type(Oid foreigntableid, AttrNumber attnum)
         {
             char *type = defGetString(opt);
 
-            if (strcmp(type, "point") == 0) 
+            if (strcmp(type, "float") == 0)
+            {
+                res = HvaultColumnFloatVal;
+            }
+            else if (strcmp(type, "byte") == 0) 
+            {
+                res = HvaultColumnInt8Val;
+            }
+            else if (strcmp(type, "int2") == 0) 
+            {
+                res = HvaultColumnInt16Val;
+            }
+            else if (strcmp(type, "int4") == 0) 
+            {
+                res = HvaultColumnInt32Val;
+            }
+            else if (strcmp(type, "int8") == 0) 
+            {
+                res = HvaultColumnInt32Val;
+            }
+            else if (strcmp(type, "point") == 0) 
             {
                 res = HvaultColumnPoint;
             }

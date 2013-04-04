@@ -21,13 +21,17 @@
 typedef enum HvaultColumnType
 {
     HvaultColumnNull,
-    HvaultColumnFloatVal,
     HvaultColumnPoint,
     HvaultColumnFootprint,
     HvaultColumnFileIdx,
     HvaultColumnLineIdx,
     HvaultColumnSampleIdx,
     HvaultColumnTime,
+    HvaultColumnFloatVal,
+    HvaultColumnInt8Val,
+    HvaultColumnInt16Val,
+    HvaultColumnInt32Val,
+    HvaultColumnInt64Val,
 } HvaultColumnType;
 
 typedef enum 
@@ -151,7 +155,8 @@ typedef struct
     Datum *values;       /* Tuple values */
     bool *nulls;         /* Tuple null flags */ 
     /* by-reference values */
-    double *sds_vals;    /* Values of SDS columns */
+    double *sds_floats;  /* Values of SDS columns */
+    int64_t *sds_ints;   /* Values of SDS columns */
     LWPOINT *point;      /* Pixel point value */
     LWPOLY *poly;        /* Pixel footprint value */
     POINTARRAY *ptarray; /* Point array for footprint */

@@ -629,6 +629,34 @@ check_column_types(List *coltypes, TupleDesc tupdesc)
                              errmsg("Invalid column type %d", attnum),
                              errhint("SDS column must have float8 type")));
                 break;
+            case HvaultColumnInt8Val:
+                if (tupdesc->attrs[attnum]->atttypid != CHAROID)
+                    ereport(ERROR, 
+                            (errcode(ERRCODE_FDW_ERROR),
+                             errmsg("Invalid column type %d", attnum),
+                             errhint("SDS column must have char type")));
+                break;
+            case HvaultColumnInt16Val:
+                if (tupdesc->attrs[attnum]->atttypid != INT2OID)
+                    ereport(ERROR, 
+                            (errcode(ERRCODE_FDW_ERROR),
+                             errmsg("Invalid column type %d", attnum),
+                             errhint("SDS column must have int2 type")));
+                break;
+            case HvaultColumnInt32Val:
+                if (tupdesc->attrs[attnum]->atttypid != INT4OID)
+                    ereport(ERROR, 
+                            (errcode(ERRCODE_FDW_ERROR),
+                             errmsg("Invalid column type %d", attnum),
+                             errhint("SDS column must have int4 type")));
+                break;
+            case HvaultColumnInt64Val:
+                if (tupdesc->attrs[attnum]->atttypid != INT8OID)
+                    ereport(ERROR, 
+                            (errcode(ERRCODE_FDW_ERROR),
+                             errmsg("Invalid column type %d", attnum),
+                             errhint("SDS column must have int8 type")));
+                break;
             case HvaultColumnPoint:
             case HvaultColumnFootprint:
                 if (tupdesc->attrs[attnum]->atttypid != geomtypeoid)
@@ -800,17 +828,66 @@ static inline void
 fill_float_val(HvaultExecState const *scan, AttrNumber attnum)
 {
     HvaultSDSBuffer *sds = scan->colbuffer[attnum];
-    if (sds->fill_val != NULL && 
-        hdf_cmp(sds->type, sds->cur, scan->cur_sample, sds->fill_val))
+    scan->nulls[attnum] = hdf_cmp(sds->type, sds->cur, scan->cur_sample, 
+                                  sds->fill_val);
+    if (!scan->nulls[attnum]) 
     {
-        scan->nulls[attnum] = true;
-    } 
-    else
-    {
-        scan->nulls[attnum] = false;
-        scan->sds_vals[attnum] = hdf_value(
+        scan->sds_floats[attnum] = hdf_value(
             sds->type, sds->cur, scan->cur_sample) / sds->scale - sds->offset;
-        scan->values[attnum] = Float8GetDatumFast(scan->sds_vals[attnum]);
+        scan->values[attnum] = Float8GetDatumFast(scan->sds_floats[attnum]);    
+    }
+    
+}
+
+static inline void
+fill_int8_val(HvaultExecState const *scan, AttrNumber attnum)
+{
+    HvaultSDSBuffer *sds = scan->colbuffer[attnum];
+    scan->nulls[attnum] = hdf_cmp(sds->type, sds->cur, scan->cur_sample, 
+                                  sds->fill_val);
+    if (!scan->nulls[attnum]) 
+    {
+        scan->values[attnum] = 
+            Int8GetDatum(((int8_t *) sds->cur)[scan->cur_sample]);
+    }
+}
+
+static inline void
+fill_int16_val(HvaultExecState const *scan, AttrNumber attnum)
+{
+    HvaultSDSBuffer *sds = scan->colbuffer[attnum];
+    scan->nulls[attnum] = hdf_cmp(sds->type, sds->cur, scan->cur_sample, 
+                                  sds->fill_val);
+    if (!scan->nulls[attnum]) 
+    {
+        scan->values[attnum] = 
+            Int16GetDatum(((int16_t *) sds->cur)[scan->cur_sample]);
+    }
+}
+
+static inline void
+fill_int32_val(HvaultExecState const *scan, AttrNumber attnum)
+{
+    HvaultSDSBuffer *sds = scan->colbuffer[attnum];
+    scan->nulls[attnum] = hdf_cmp(sds->type, sds->cur, scan->cur_sample, 
+                                  sds->fill_val);
+    if (!scan->nulls[attnum]) 
+    {
+        scan->values[attnum] = 
+            Int32GetDatum(((int32_t *) sds->cur)[scan->cur_sample]);
+    }
+}
+
+static inline void
+fill_int64_val(HvaultExecState const *scan, AttrNumber attnum)
+{
+    HvaultSDSBuffer *sds = scan->colbuffer[attnum];
+    scan->nulls[attnum] = hdf_cmp(sds->type, sds->cur, scan->cur_sample, 
+                                  sds->fill_val);
+    if (!scan->nulls[attnum]) 
+    {
+        scan->sds_ints[attnum] = ((int64_t *) sds->cur)[scan->cur_sample];
+        scan->values[attnum] = Int64GetDatumFast(scan->sds_ints[attnum]);
     }
 }
 
@@ -866,6 +943,18 @@ fill_tuple(HvaultExecState const *scan)
                 break;
             case HvaultColumnFloatVal:
                 fill_float_val(scan, attnum);
+                break;
+            case HvaultColumnInt8Val:
+                fill_int8_val(scan, attnum);
+                break;
+            case HvaultColumnInt16Val:
+                fill_int16_val(scan, attnum);
+                break;
+            case HvaultColumnInt32Val:
+                fill_int32_val(scan, attnum);
+                break;
+            case HvaultColumnInt64Val:
+                fill_int64_val(scan, attnum);
                 break;
             case HvaultColumnPoint:
                 fill_point_val(scan, attnum);
@@ -1141,7 +1230,8 @@ makeExecState(List *coltypes,
 
     state->values = palloc(sizeof(Datum) * state->natts);
     state->nulls = palloc(sizeof(bool) * state->natts);
-    state->sds_vals = palloc(sizeof(double) * state->natts);
+    state->sds_floats = palloc(sizeof(double) * state->natts);
+    state->sds_ints = palloc(sizeof(int64_t) * state->natts);
 
     state->point = lwpoint_make2d(SRID_UNKNOWN, 0, 0);
     state->ptarray = ptarray_construct(false, false, 5);
@@ -1210,6 +1300,10 @@ assignSDSBuffers(HvaultExecState *state, Oid relid, TupleDesc tupdesc)
     {
         switch(lfirst_int(l)) {
             case HvaultColumnFloatVal:
+            case HvaultColumnInt8Val:
+            case HvaultColumnInt16Val:
+            case HvaultColumnInt32Val:
+            case HvaultColumnInt64Val:
                 state->colbuffer[attnum] = getSDSBuffer(
                     &(state->file.sds), 
                     getColumnSDS(relid, attnum, tupdesc));

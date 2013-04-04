@@ -41,6 +41,42 @@ hdf_sizeof(int32_t type)
     }
 }
 
+static inline void *
+hdf_pntr(int32_t type, void *buffer, size_t offset)
+{
+    switch(type)
+    {
+        case DFNT_CHAR8:
+            return ((signed char *)   buffer) + offset;
+        case DFNT_UCHAR8:
+            return ((unsigned char *) buffer) + offset;
+        case DFNT_INT8:
+            return ((int8_t *)        buffer) + offset;
+        case DFNT_UINT8:
+            return ((uint8_t *)       buffer) + offset;
+        case DFNT_INT16:
+            return ((int16_t *)       buffer) + offset;
+        case DFNT_UINT16:
+            return ((uint16_t *)      buffer) + offset;
+        case DFNT_INT32:
+            return ((int32_t *)       buffer) + offset;
+        case DFNT_UINT32:
+            return ((uint32_t *)      buffer) + offset;
+        case DFNT_INT64:
+            return ((int64_t *)       buffer) + offset;
+        case DFNT_UINT64:
+            return ((uint64_t *)      buffer) + offset;
+        case DFNT_FLOAT32:
+            return ((float *)         buffer) + offset;
+        case DFNT_FLOAT64:
+            return ((double *)        buffer) + offset;
+        default:
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                            errmsg("Unknown HDF datatype %d", type)));
+            return NULL;
+    }   
+}
+
 static inline double 
 hdf_value(int32_t type, void *buffer, size_t offset)
 {
@@ -80,6 +116,8 @@ hdf_value(int32_t type, void *buffer, size_t offset)
 static inline bool
 hdf_cmp(int32_t type, void *buffer, size_t offset, void *val)
 {
+    if (val == NULL)
+        return false;
     switch(type)
     {
         case DFNT_CHAR8:
@@ -109,7 +147,7 @@ hdf_cmp(int32_t type, void *buffer, size_t offset, void *val)
         default:
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
                             errmsg("Unknown HDF datatype %d", type)));
-            return -1;
+            return false; 
     }   
 }
 
