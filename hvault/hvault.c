@@ -126,7 +126,7 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
     plan = (ForeignScan *) node->ss.ps.plan;
     fdw_plan_private = plan->fdw_private;
     foreigntableid = RelationGetRelid(node->ss.ss_currentRelation);
-    catalog = hvaultGetTableOption(foreigntableid, "catalog");
+    catalog = hvaultGetTableOptionString(foreigntableid, "catalog");
     if (catalog)
     {
         Value *query = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
@@ -134,7 +134,7 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
     }
     else
     {
-        char *filename = hvaultGetTableOption(foreigntableid, "filename");
+        char *filename = hvaultGetTableOptionString(foreigntableid, "filename");
         if (filename != NULL)
             ExplainPropertyText("Single file", filename, es);
     }
@@ -206,7 +206,7 @@ hvaultBegin(ForeignScanState *node, int eflags)
                           list_nth(fdw_plan_private, HvaultPlanPredicates));
     check_column_types(state->coltypes, tupdesc);
 
-    catalog = hvaultGetTableOption(foreigntableid, "catalog");
+    catalog = hvaultGetTableOptionString(foreigntableid, "catalog");
     if (catalog)
     {
         Value *query = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
@@ -214,8 +214,8 @@ hvaultBegin(ForeignScanState *node, int eflags)
     }
     else
     {
-        state->file.filename = hvaultGetTableOption(foreigntableid, 
-                                                    "filename");
+        state->file.filename = hvaultGetTableOptionString(foreigntableid, 
+                                                          "filename");
         if (!state->file.filename)
         {
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
@@ -225,6 +225,8 @@ hvaultBegin(ForeignScanState *node, int eflags)
 
     /* fill required sds list & helper pointers */
     assignSDSBuffers(state, foreigntableid, tupdesc);
+    state->shift_longitude = hvaultGetTableOptionBool(foreigntableid, 
+                                                      "shift_longitude");
     elog(DEBUG1, "SDS buffers: %d", list_length(state->file.sds));
 
     node->fdw_state = state;
@@ -450,7 +452,7 @@ hvaultAnalyze(Relation relation,
     Datum argvals[] = {BLCKSZ};
 
 
-    catalog = hvaultGetTableOption(RelationGetRelid(relation), "catalog");
+    catalog = hvaultGetTableOptionString(RelationGetRelid(relation), "catalog");
     if (catalog == NULL)
         return false;
 
@@ -528,7 +530,7 @@ acquire_sample_rows(Relation relation,
 
     foreigntableid = RelationGetRelid(relation);
     tupdesc = RelationGetDescr(relation);
-    catalog = hvaultGetTableOption(foreigntableid, "catalog");
+    catalog = hvaultGetTableOptionString(foreigntableid, "catalog");
     if (catalog == NULL)
         return 0;
 
@@ -760,6 +762,15 @@ calc_next_footprint(HvaultExecState const *scan, HvaultHDFFile *file)
     }
 }
 
+static void shift_longitude_line(float *buf, int size)
+{
+    int i;
+    for (i = 0; i < size; ++i)
+    {
+        buf[i] += (float)(360 * (buf[i] < 0));
+    }
+}
+
 static void 
 fetch_next_line(HvaultExecState *scan)
 {
@@ -780,7 +791,8 @@ fetch_next_line(HvaultExecState *scan)
 
         if (sds->haswindow)
         {
-            if (scan->cur_line == 0) {
+            if (scan->cur_line == 0) 
+            {
                 if (SDreaddata(sds->id, start, stride, end, sds->cur) == FAIL)
                 {
                     ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
@@ -814,6 +826,22 @@ fetch_next_line(HvaultExecState *scan)
                                 errmsg("Can't read data from HDF file")));
                 return; /* will never reach here */       
             }    
+        }
+    }
+
+    if (scan->shift_longitude && scan->lon != NULL) 
+    {
+        if (scan->lon->haswindow)
+        {
+            if (scan->cur_line == 0) 
+                shift_longitude_line(scan->lon->cur, scan->file.num_samples);
+
+            if (scan->cur_line != scan->file.num_lines - 1)
+                shift_longitude_line(scan->lon->next, scan->file.num_samples);                
+        }
+        else 
+        {
+            shift_longitude_line(scan->lon->cur, scan->file.num_samples);
         }
     }
 
@@ -1078,6 +1106,7 @@ makeCatalogCursor(char const *query, List *fdw_expr)
 {
     HvaultCatalogCursor *cursor;
     ListCell *l;
+    int pos, nargs;
 
     cursor = palloc(sizeof(HvaultCatalogCursor));
 
@@ -1088,8 +1117,8 @@ makeCatalogCursor(char const *query, List *fdw_expr)
     cursor->argvals = NULL;
     cursor->argnulls = NULL;
 
-    int pos = 0;
-    int nargs = list_length(fdw_expr);
+    pos = 0;
+    nargs = list_length(fdw_expr);
     cursor->argtypes = palloc(sizeof(Oid) * nargs);
     cursor->argvals = palloc(sizeof(Datum) * nargs);
     cursor->argnulls = palloc(sizeof(char) * nargs);
@@ -1137,11 +1166,11 @@ startCatalogCursor(HvaultCatalogCursor *cursor,
     pos = 0;
     foreach(l, fdw_expr)
     {
-        bool isnull;
-        Assert(IsA(lfirst(l), ExprState));
         ExprState *expr = (ExprState *) lfirst(l);
-        cursor->argvals[pos] = ExecEvalExpr(expr, expr_ctx, 
-                                            &isnull, NULL);
+        bool isnull;
+
+        Assert(IsA(expr, ExprState));
+        cursor->argvals[pos] = ExecEvalExpr(expr, expr_ctx, &isnull, NULL);
         cursor->argnulls[pos] = isnull ? 'n' : ' ';
         pos++;
     }
@@ -1177,8 +1206,10 @@ initHDFFile(HvaultHDFFile *file, MemoryContext memctx)
 static HvaultGeomPredicate *
 listToPredicate(List *p)
 {
+    HvaultGeomPredicate *res;
+
     Assert(list_length(p) == HvaultPredicateNumParams);
-    HvaultGeomPredicate *res = palloc(sizeof(HvaultGeomPredicate));
+    res = palloc(sizeof(HvaultGeomPredicate));
     res->coltype = list_nth_int(p, HvaultPredicateColtype);
     res->op      = list_nth_int(p, HvaultPredicateGeomOper);
     res->argno   = list_nth_int(p, HvaultPredicateArgno);
@@ -1199,6 +1230,7 @@ makeExecState(List *coltypes,
     state->natts = list_length(coltypes);
     state->coltypes = coltypes;
     state->has_footprint = false;
+    state->shift_longitude = false;
     state->scan_size = 10;
 
     state->expr_ctx = plan->ps_ExprContext;

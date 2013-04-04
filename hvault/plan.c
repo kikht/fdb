@@ -170,9 +170,10 @@ hvaultGetRelSize(PlannerInfo *root,
     fdw_private->relid = baserel->relid;
     fdw_private->coltypes = hvaultGetUsedColumns(root, baserel, foreigntableid, 
                                                  fdw_private->natts);
-    fdw_private->catalog = hvaultGetTableOption(foreigntableid, "catalog");
+    fdw_private->catalog = hvaultGetTableOptionString(foreigntableid, 
+                                                      "catalog");
 
-    // TODO: Use constant catalog quals for better estimate
+    /* TODO: Use constant catalog quals for better estimate */
     num_files = hvaultGetNumFiles(fdw_private->catalog);
     tuples_per_file = HVAULT_TUPLES_PER_FILE;
     scale_factor = 1; /* 4 for 500m, 16 for 250m */
@@ -511,11 +512,13 @@ getSortPathKeys(PlannerInfo const *root,
 
         foreach(m, ec->ec_members)
         {
+            Var *var;
             EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
+
             if (!IsA(em->em_expr, Var))
                 continue;
         
-            Var *var = (Var *) em->em_expr;
+            var = (Var *) em->em_expr;
             if (baserel->relid != var->varno)
                 continue;
             
@@ -1676,7 +1679,8 @@ getGeometryOpers(HvaultTableInfo *table)
 static inline HvaultGeomOperator
 getGeometryOper(Oid opno, const HvaultTableInfo *table)
 {
-    for(int i = 0; i < HvaultGeomNumRealOpers; ++i)
+    int i;
+    for(i = 0; i < HvaultGeomNumRealOpers; ++i)
         if (table->geomopers[i] == opno) 
             return i;
     return HvaultGeomInvalidOp;

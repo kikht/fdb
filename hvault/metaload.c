@@ -205,7 +205,8 @@ get_modis_attr(int32_t sd_id, char const * attr, StringInfo result)
 
 static bool
 get_modis_swath_info(ModisSwathInfo *info, 
-                     ModisSwathRegex *regex)
+                     ModisSwathRegex *regex,
+                     bool shift_longitude)
 {
     bool retval = false;
     struct stat stats; 
@@ -280,6 +281,12 @@ get_modis_swath_info(ModisSwathInfo *info,
         {
             elog(WARNING, "Can't get stop time");
             break;
+        }
+
+        if (shift_longitude) 
+        {
+            west += 360 * (west < 0);
+            east += 360 * (east < 0);
         }
 
         ptarray = ptarray_construct(false, false, 5);
@@ -405,7 +412,9 @@ store_modis_swath_info(ModisSwathInfo const *info, char const *catalog)
 }
 
 static bool
-load_modis_swath(char const *catalog, char const *filename)
+load_modis_swath(char const *catalog, 
+                 char const *filename, 
+                 bool shift_longitude)
 {
     ModisSwathRegex regex;
     ModisSwathInfo info;
@@ -418,7 +427,7 @@ load_modis_swath(char const *catalog, char const *filename)
     }
 
     info.filename = filename;
-    if (get_modis_swath_info(&info, &regex))
+    if (get_modis_swath_info(&info, &regex, shift_longitude))
     {
         if (store_modis_swath_info(&info, catalog))
         {
@@ -445,8 +454,9 @@ hvault_load_modis_swath(PG_FUNCTION_ARGS)
 {
     char const *catalog = PG_GETARG_CSTRING(0);
     char const *filename = PG_GETARG_CSTRING(1);
+    bool shift_longitude = PG_GETARG_BOOL(2);
 
-    PG_RETURN_BOOL(load_modis_swath(catalog, filename));
+    PG_RETURN_BOOL(load_modis_swath(catalog, filename, shift_longitude));
 }
 
 static struct {
@@ -455,6 +465,7 @@ static struct {
     ModisSwathInfo info;
     SPIPlanPtr insert_plan, check_plan;
     int num_files;
+    bool shift_longitude;
 } mass_load_ctx;
 
 static int
@@ -482,7 +493,9 @@ mass_load_modis_swath_walker(char const * fpath,
         if (!check_modis_swath_exists(mass_load_ctx.check_plan, fpath))
         {
             mass_load_ctx.info.filename = fpath;
-            if (get_modis_swath_info(&mass_load_ctx.info, &mass_load_ctx.regex))
+            if (get_modis_swath_info(&mass_load_ctx.info, 
+                                     &mass_load_ctx.regex,
+                                     mass_load_ctx.shift_longitude))
             {
                 if (execute_insert_plan(mass_load_ctx.insert_plan, 
                                         &mass_load_ctx.info))
@@ -511,12 +524,14 @@ mass_load_modis_swath_walker(char const * fpath,
 static int
 mass_load_modis_swath(char const *catalog, 
                       char const *path, 
-                      char const *pattern)
+                      char const *pattern,
+                      bool shift_longitude)
 {
     mass_load_ctx.num_files = 0;
     if (SPI_connect() != SPI_OK_CONNECT)
         return -1;
 
+    mass_load_ctx.shift_longitude = shift_longitude;
     mass_load_ctx.pattern = pattern;
     mass_load_ctx.insert_plan = prepare_insert_plan(catalog);
     if (mass_load_ctx.insert_plan != NULL)
@@ -560,6 +575,8 @@ hvault_mass_load_modis_swath(PG_FUNCTION_ARGS)
     char const *catalog = PG_GETARG_CSTRING(0);
     char const *dir = PG_GETARG_CSTRING(1);
     char const *pattern = PG_GETARG_CSTRING(2);
+    bool shift_longitude = PG_GETARG_BOOL(3);
 
-    PG_RETURN_INT32(mass_load_modis_swath(catalog, dir, pattern));
+    PG_RETURN_INT32(mass_load_modis_swath(catalog, dir, pattern, 
+                                          shift_longitude));
 }

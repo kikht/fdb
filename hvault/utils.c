@@ -155,11 +155,6 @@ hvaultGetUsedColumns(PlannerInfo *root,
         }
     }
 
-    // for (attnum = 0; attnum < walker_cxt.natts; attnum++)
-    // {
-    //     res = lappend_int(res, walker_cxt.types[attnum]);
-    // }
-    // pfree(walker_cxt.types);
     return walker_cxt.types;
 }
 
@@ -179,7 +174,7 @@ hvaultGetAllColumns(Relation relation)
     return result;
 }
 
-char * 
+DefElem * 
 hvaultGetTableOption(Oid foreigntableid, char *option)
 {
     ListCell *l;
@@ -189,7 +184,7 @@ hvaultGetTableOption(Oid foreigntableid, char *option)
         DefElem *def = (DefElem *) lfirst(l);
         if (strcmp(def->defname, option) == 0)
         {
-            return defGetString(def);
+            return def;
         }
     }
     elog(DEBUG1, "Can't find table option %s", option);

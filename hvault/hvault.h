@@ -11,6 +11,7 @@
 #include <nodes/pg_list.h>
 #include <nodes/relation.h>
 #include <utils/palloc.h>
+#include <commands/defrem.h>
 
 /* PostGIS */
 #include <liblwgeom.h>
@@ -31,7 +32,7 @@ typedef enum HvaultColumnType
     HvaultColumnInt8Val,
     HvaultColumnInt16Val,
     HvaultColumnInt32Val,
-    HvaultColumnInt64Val,
+    HvaultColumnInt64Val
 } HvaultColumnType;
 
 typedef enum 
@@ -59,7 +60,7 @@ typedef enum
     HvaultGeomCommAbove,
     HvaultGeomCommBelow,
 
-    HvaultGeomNumAllOpers,
+    HvaultGeomNumAllOpers
 } HvaultGeomOperator;
 
 enum HvaultPlanItems
@@ -68,7 +69,7 @@ enum HvaultPlanItems
     HvaultPlanColtypes,
     HvaultPlanPredicates,
 
-    HvaultPlanNumParams,
+    HvaultPlanNumParams
 };
 
 enum HvaultPredicateItems
@@ -78,7 +79,7 @@ enum HvaultPredicateItems
     HvaultPredicateArgno,
     HvaultPredicateIsNegative,
 
-    HvaultPredicateNumParams,
+    HvaultPredicateNumParams
 };
 
 typedef struct 
@@ -135,6 +136,7 @@ typedef struct
     AttrNumber natts;    /* Total number of tuple attributes */
     List *coltypes;      /* List of HvaultColumnTypes for each column */
     bool has_footprint;  /* true if query needs footprint calculation */
+    bool shift_longitude;/* true if we need to shift longitude to (0,360) */
     int scan_size;       /* Number of lines in one scan */
     List *fdw_expr;      /* List of prepared for computation query expressions*/
     ExprContext *expr_ctx; /* Context for prepared expressions */
@@ -186,13 +188,26 @@ ForeignScan *hvaultGetPlan(PlannerInfo *root,
                            List *scan_clauses);
 
 /* utils.c */
-char *hvaultGetTableOption(Oid foreigntableid, char *option);
+DefElem *hvaultGetTableOption(Oid foreigntableid, char *option);
 HvaultColumnType *hvaultGetUsedColumns(PlannerInfo *root, 
                                        RelOptInfo *baserel, 
                                        Oid foreigntableid,
                                        AttrNumber natts);
 List *hvaultGetAllColumns(Relation relation);
 double hvaultGetNumFiles(char *catalog);
+
+static inline char * 
+hvaultGetTableOptionString(Oid foreigntableid, char *option)
+{
+    return defGetString(hvaultGetTableOption(foreigntableid, option));
+}
+
+static inline bool 
+hvaultGetTableOptionBool(Oid foreigntableid, char *option)
+{
+    return defGetBoolean(hvaultGetTableOption(foreigntableid, option));
+}
+
 
 /* predicate.c */
 int hvaultGeomPredicate(HvaultColumnType coltype,

@@ -45,9 +45,9 @@ CREATE FOREIGN TABLE test_catalog (
     file_id   int4        OPTIONS (type 'file_index'),
     line_id   int4        OPTIONS (type 'line_index'),
     sample_id int4        OPTIONS (type 'sample_index'),
-    pnt       geometry    OPTIONS (type 'point'),
-    footpt    geometry    OPTIONS (type 'footprint'),
-    tstamp    timestamp   OPTIONS (type 'time'),
+    point     geometry    OPTIONS (type 'point'),
+    footprint geometry    OPTIONS (type 'footprint'),
+    time      timestamp   OPTIONS (type 'time'),
 
     Surface_Reflectance_Band_1   float8  OPTIONS (sds '1km Surface Reflectance Band 1'),
     Surface_Reflectance_Band_2   float8  OPTIONS (sds '1km Surface Reflectance Band 2'),
@@ -68,4 +68,5 @@ CREATE FOREIGN TABLE test_catalog (
 
     Reflectance_Band_Quality     int4    OPTIONS (sds '1km Reflectance Band Quality', type 'int4')
 ) SERVER hvault_service
-  OPTIONS (catalog 'hdf_catalog');
+  OPTIONS (catalog 'hdf_catalog',
+           shift_longitude 'true');
