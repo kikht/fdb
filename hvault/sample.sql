@@ -1,3 +1,7 @@
+select avg((Reflectance_band_quality & x'3ffffffc'::int) = 0), file_id 
+    from test_catalog group by file_id;
+
+
 SELECT d.file_id, d.line_id, d.sample_id, ST_AsText(pnt) 
     FROM test_catalog d 
     JOIN hdf_catalog f ON d.file_id = f.file_id 
