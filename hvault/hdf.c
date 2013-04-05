@@ -105,6 +105,10 @@ hdf_file_open(HvaultHDFFile *file,
             hdf_file_close(file);
             return false;
         }
+
+        //TODO: check SDS datatypes 
+
+
         /* Get scale, offset & fill */
         sds->fill_val = palloc(hdf_sizeof(sds->type));
         if (SDgetfillvalue(sds->id, sds->fill_val) != SUCCEED)
