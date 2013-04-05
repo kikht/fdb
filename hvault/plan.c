@@ -413,7 +413,7 @@ get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs)
                 width += sizeof(double);
                 break;
             case HvaultColumnInt8Val:
-                width += sizeof(int8_t);
+                width += sizeof(int16_t);
                 break;
             case HvaultColumnInt16Val:
                 width += sizeof(int16_t);

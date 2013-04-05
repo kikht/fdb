@@ -12,8 +12,8 @@ CREATE FOREIGN TABLE mod03 (
     Range           float8  OPTIONS (sds 'Range'),
     SolarZenith     float8  OPTIONS (sds 'SolarZenith'),
     SolarAzimuth    float8  OPTIONS (sds 'SolarAzimuth'),
-    LandSeaMask     char    OPTIONS (sds 'Land/SeaMask', type 'byte'),
-    gflags          char    OPTIONS (sds 'gflags', type 'byte')
+    LandSeaMask     int2    OPTIONS (sds 'Land/SeaMask', type 'byte'),
+    gflags          int2    OPTIONS (sds 'gflags', type 'byte')
 ) SERVER hvault_service
   OPTIONS (catalog 'mod03_catalog',
            shift_longitude 'true');

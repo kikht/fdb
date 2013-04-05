@@ -632,7 +632,7 @@ check_column_types(List *coltypes, TupleDesc tupdesc)
                              errhint("SDS column must have float8 type")));
                 break;
             case HvaultColumnInt8Val:
-                if (tupdesc->attrs[attnum]->atttypid != CHAROID)
+                if (tupdesc->attrs[attnum]->atttypid != INT2OID)
                     ereport(ERROR, 
                             (errcode(ERRCODE_FDW_ERROR),
                              errmsg("Invalid column type %d", attnum),
@@ -876,7 +876,7 @@ fill_int8_val(HvaultExecState const *scan, AttrNumber attnum)
     if (!scan->nulls[attnum]) 
     {
         scan->values[attnum] = 
-            Int8GetDatum(((int8_t *) sds->cur)[scan->cur_sample]);
+            Int16GetDatum(((int8_t *) sds->cur)[scan->cur_sample]);
     }
 }
 

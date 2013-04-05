@@ -10,7 +10,7 @@ CREATE FOREIGN TABLE mod04 (
     Angstrom_Exponent_Land                        float8  OPTIONS (sds 'Angstrom_Exponent_Land'),
     Cloud_Fraction_Land                           float8  OPTIONS (sds 'Cloud_Fraction_Land'),
     Cloud_Fraction_Ocean                          float8  OPTIONS (sds 'Cloud_Fraction_Ocean'),
-    Cloud_Mask_QA                                 char    OPTIONS (sds 'Cloud_Mask_QA', type 'byte'),
+    Cloud_Mask_QA                                 int2    OPTIONS (sds 'Cloud_Mask_QA', type 'byte'),
     Corrected_Optical_Depth_Land_wav2p1           float8  OPTIONS (sds 'Corrected_Optical_Depth_Land_wav2p1'),
     Deep_Blue_Aerosol_Optical_Depth_550_Land      float8  OPTIONS (sds 'Deep_Blue_Aerosol_Optical_Depth_550_Land'),
     Deep_Blue_Aerosol_Optical_Depth_550_Land_STD  float8  OPTIONS (sds 'Deep_Blue_Aerosol_Optical_Depth_550_Land_STD'),

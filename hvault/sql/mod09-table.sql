@@ -10,9 +10,9 @@ CREATE FOREIGN TABLE mod09 (
     Atmospheric_Optical_Depth_Band_3    float8  OPTIONS (sds '1km Atmospheric Optical Depth Band 3'),
     Atmospheric_Optical_Depth_Band_8    float8  OPTIONS (sds '1km Atmospheric Optical Depth Band 8'),
 
-    Atmospheric_Optical_Depth_Model     char    OPTIONS (sds '1km Atmospheric Optical Depth Model', type 'byte'),
+    Atmospheric_Optical_Depth_Model     int2    OPTIONS (sds '1km Atmospheric Optical Depth Model', type 'byte'),
     Atmospheric_Optical_Depth_Band_QA   int2    OPTIONS (sds '1km Atmospheric Optical Depth Band QA', type 'int2'),
-    Atmospheric_Optical_Depth_Band_CM   char    OPTIONS (sds '1km Atmospheric Optical Depth Band CM', type 'byte'),
+    Atmospheric_Optical_Depth_Band_CM   int2    OPTIONS (sds '1km Atmospheric Optical Depth Band CM', type 'byte'),
 
     Surface_Reflectance_Band_1          float8  OPTIONS (sds '1km Surface Reflectance Band 1'),
     Surface_Reflectance_Band_2          float8  OPTIONS (sds '1km Surface Reflectance Band 2'),
