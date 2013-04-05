@@ -10,9 +10,9 @@ CREATE FOREIGN TABLE mod09 (
     Atmospheric_Optical_Depth_Band_3    float8  OPTIONS (sds '1km Atmospheric Optical Depth Band 3'),
     Atmospheric_Optical_Depth_Band_8    float8  OPTIONS (sds '1km Atmospheric Optical Depth Band 8'),
 
-    Atmospheric_Optical_Depth_Model     byte    OPTIONS (sds '1km Atmospheric Optical Depth Model', type 'byte'),
+    Atmospheric_Optical_Depth_Model     char    OPTIONS (sds '1km Atmospheric Optical Depth Model', type 'byte'),
     Atmospheric_Optical_Depth_Band_QA   int2    OPTIONS (sds '1km Atmospheric Optical Depth Band QA', type 'int2'),
-    Atmospheric_Optical_Depth_Band_CM   byte    OPTIONS (sds '1km Atmospheric Optical Depth Band CM', type 'byte'),
+    Atmospheric_Optical_Depth_Band_CM   char    OPTIONS (sds '1km Atmospheric Optical Depth Band CM', type 'byte'),
 
     Surface_Reflectance_Band_1          float8  OPTIONS (sds '1km Surface Reflectance Band 1'),
     Surface_Reflectance_Band_2          float8  OPTIONS (sds '1km Surface Reflectance Band 2'),
@@ -32,8 +32,8 @@ CREATE FOREIGN TABLE mod09 (
     Surface_Reflectance_Band_16         float8  OPTIONS (sds '1km Surface Reflectance Band 16'),
     Surface_Reflectance_Band_26         float8  OPTIONS (sds '1km Surface Reflectance Band 26'),
     
-    Reflectance_Band_Quality            int4    OPTIONS (sds '1km Reflectance Band Quality', type int4),
-    Reflectance_Data_State_QA           int2    OPTIONS (sds '1km Reflectance Data State QA', type int2),
+    Reflectance_Band_Quality            int4    OPTIONS (sds '1km Reflectance Band Quality', type 'int4'),
+    Reflectance_Data_State_QA           int2    OPTIONS (sds '1km Reflectance Data State QA', type 'int2'),
     
     Band_3_Path_Radiance                float8  OPTIONS (sds '1km Band 3 Path Radiance')
 ) SERVER hvault_service
