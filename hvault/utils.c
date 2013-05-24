@@ -192,7 +192,7 @@ hvaultGetTableOption(Oid foreigntableid, char *option)
 }
 
 double 
-hvaultGetNumFiles(char *catalog)
+hvaultGetNumFiles(char const *catalog)
 {
     StringInfo query_str;
     Datum val;

@@ -1,7 +1,4 @@
 #include <postgres.h>
-#include <catalog/pg_namespace.h>
-#include <catalog/pg_operator.h>
-#include <catalog/pg_proc.h>
 #include <catalog/pg_type.h>
 #include <commands/defrem.h>
 #include <foreign/foreign.h>
@@ -16,17 +13,19 @@
 #include <optimizer/planmain.h>
 #include <tcop/tcopprot.h>
 #include <utils/builtins.h>
-#include <utils/lsyscache.h>
 #include <utils/memutils.h>
 #include <utils/rel.h>
-#include <utils/syscache.h>
 
+#include "catalog.h"
+#include "deparse.h"
 #include "hvault.h"
+#include "utils.h"
 
 #define POINT_SIZE 32
 #define FOOTPRINT_SIZE 120
 #define STARTUP_COST 10
 #define PIXEL_COST 0.001
+#define FILE_COST 1
 
 #define GEOMETRY_OP_QUERY \
     "SELECT o.oid from pg_opclass c" \
@@ -38,47 +37,22 @@
  * This file includes routines involved in query planning
  */
 
-typedef struct 
-{
-    Index relid;      
-    AttrNumber natts;
-    HvaultColumnType *coltypes;
-    char *catalog;
 
-    Oid geomopers[HvaultGeomNumRealOpers];
-} HvaultTableInfo;
 
 typedef struct 
 {
     HvaultTableInfo const *table;
     List *own_quals;
     List *fdw_expr;
-    char const * filter;
-    char const * sort;
+    // char const * filter;
+    // char const * sort;
+    HvaultCatalogQuery query;
     List *predicates;
 } HvaultPathData;
 
-typedef struct
-{
-    HvaultTableInfo const *table;
-    List *fdw_expr;
-    StringInfoData query;
-    bool first_qual;
-} HvaultDeparseContext;
 
-typedef struct {
-    HvaultGeomOperator op;
-    bool isneg;
-} GeomPredicateDesc;
 
-typedef struct {
-    RestrictInfo *rinfo;
-    Var *var;
-    Expr *arg;
-    HvaultColumnType coltype;
-    GeomPredicateDesc pred;
-    GeomPredicateDesc catalog_pred;
-} GeomOpQual;
+
 
 static int  get_row_width(HvaultColumnType *coltypes, AttrNumber numattrs);
 static void getSortPathKeys(PlannerInfo const *root,
@@ -96,9 +70,7 @@ static void extractCatalogQuals(PlannerInfo *root,
                                 List **catalog_ec_vars,
                                 List **footprint_quals,
                                 List **footprint_joins);
-static bool isFootprintQual(Expr *expr, 
-                            const HvaultTableInfo *table, 
-                            GeomOpQual *qual);
+
 static void addForeignPaths(PlannerInfo *root, 
                             RelOptInfo *baserel, 
                             HvaultTableInfo const *table,
@@ -118,12 +90,6 @@ static void generateJoinPath(PlannerInfo *root,
                              List *footprint_joins,
                              Relids relids,
                              List **considered_relids);
-static int insertFdwExpr(List **fdw_expr, Expr *node);
-static void deparseExpr(Expr *node, HvaultDeparseContext *ctx);
-static void deparseFootprintExpr(GeomOpQual *qual, 
-                                 HvaultDeparseContext *ctx);
-static void addDeparseItem(HvaultDeparseContext *ctx);
-
 /* 
  * This function is intened to provide first estimate of a size of relation
  * involved in query. Generally we have all query information available at 
@@ -170,6 +136,7 @@ hvaultGetRelSize(PlannerInfo *root,
     fdw_private->relid = baserel->relid;
     fdw_private->coltypes = hvaultGetUsedColumns(root, baserel, foreigntableid, 
                                                  fdw_private->natts);
+    
     fdw_private->catalog = hvaultGetTableOptionString(foreigntableid, 
                                                       "catalog");
 
@@ -230,7 +197,7 @@ hvaultGetPaths(PlannerInfo *root,
     all_joins = list_copy(catalog_joins);
     foreach(l, footprint_joins)
     {
-        GeomOpQual *qual = lfirst(l);
+        HvaultGeomOpQual *qual = lfirst(l);
         all_joins = lappend(all_joins, qual->rinfo);
     }
     considered_clauses = list_length(all_joins) + list_length(catalog_ec);
@@ -353,17 +320,6 @@ hvaultGetPlan(PlannerInfo *root,
     elog(DEBUG1, "Selected path quals: %s", 
          nodeToString(fdw_private->own_quals));
 
-    /* Prepare catalog query */
-    initStringInfo(&query);
-    appendStringInfoString(&query, fdw_private->filter);
-    if (fdw_private->sort)
-    {
-        appendStringInfoString(&query, " ORDER BY ");
-        appendStringInfoString(&query, fdw_private->sort);
-    }
-
-    elog(DEBUG1, "Catalog query: %s", query.data);
-
 
     /* Extract clauses that need to be checked externally */
     foreach(l, scan_clauses)
@@ -392,7 +348,8 @@ hvaultGetPlan(PlannerInfo *root,
     {
         coltypes = lappend_int(coltypes, fdw_private->table->coltypes[attnum]);
     }
-    fdw_plan_private = lappend(fdw_plan_private, makeString(query.data));
+    fdw_plan_private = lappend(fdw_plan_private, 
+                               hvaultCatalogPackQuery(fdw_private->query));
     fdw_plan_private = lappend(fdw_plan_private, coltypes);
     fdw_plan_private = lappend(fdw_plan_private, fdw_private->predicates);
 
@@ -589,123 +546,7 @@ getSortPathKeys(PlannerInfo const *root,
     }
 }
 
-static inline bool 
-isCatalogVar(HvaultColumnType type)
-{
-    return type == HvaultColumnFileIdx || type == HvaultColumnTime;
-}
 
-typedef struct
-{
-    HvaultTableInfo const table;
-} CatalogQualsContext;
-
-static bool 
-isCatalogQualWalker(Node *node, CatalogQualsContext *ctx)
-{
-    if (node == NULL)
-        return false;
-
-    switch (nodeTag(node))
-    {
-        case T_Var:
-            {
-                /*
-                 * If Var is in our table, then check its type and correct 
-                 * condition type if necessary.
-                 * Ignore other tables, because this function can also be used 
-                 * with join conditions.
-                 */
-                Var *var = (Var *) node;
-                if (var->varno == ctx->table.relid)
-                {
-                    if (!isCatalogVar(ctx->table.coltypes[var->varattno-1]))
-                        return true;
-                }
-            }
-            break;
-        case T_Param:
-        case T_ArrayRef:
-        case T_FuncExpr:
-        case T_Const:
-        case T_OpExpr:
-        case T_DistinctExpr:
-        case T_ScalarArrayOpExpr:
-        case T_RelabelType:
-        case T_BoolExpr:
-        case T_NullTest:
-        case T_ArrayExpr:
-        case T_List:
-            /* OK */
-            break;
-        default:
-            /*
-             * If it's anything else, assume it's unsafe.  This list can be
-             * expanded later, but don't forget to add deparse support below.
-             */
-            return true;
-    }
-
-    /* Recurse to examine sub-nodes */
-    return expression_tree_walker(node, isCatalogQualWalker, (void *) ctx);
-}
-
-/* Little trick to ensure that table info is const */
-static inline bool 
-isCatalogQual(Expr *expr, HvaultTableInfo const *table)
-{
-    return !isCatalogQualWalker((Node *) expr, (CatalogQualsContext *) table);
-}
-
-/* Catalog only EC will be put into baserestrictinfo by planner, so here
- * we need to extract only ECs that contain both catalog & outer table vars.
- * We skip patalogic case when one EC contains two different catalog vars
- */
-static Var *
-isCatalogJoinEC(EquivalenceClass *ec, HvaultTableInfo const *table)
-{
-    ListCell *l;
-    Var *catalog_var = NULL;
-    int num_outer_vars = 0;
-
-    foreach(l, ec->ec_members)
-    {
-        EquivalenceMember *em = (EquivalenceMember *) lfirst(l);
-        if (IsA(em->em_expr, Var))
-        {
-            Var *var = (Var *) em->em_expr;
-            if (var->varno == table->relid)
-            {
-                if (isCatalogVar(table->coltypes[var->varattno-1]))
-                {
-                    if (catalog_var == NULL)
-                    {
-                        catalog_var = var;
-                    }
-                    else
-                    {
-                        return NULL;
-                    }
-                }
-                else
-                {
-                    return NULL;
-                }
-            }
-            else
-            {
-                num_outer_vars++;
-            }
-        }
-        else
-        {
-            /* Should be Const here, but check it in more general way */
-            if (!isCatalogQual(em->em_expr, table))
-                return 0;
-        }
-    }
-    return num_outer_vars > 0 && catalog_var ? catalog_var : NULL;
-}
 
 static void
 extractCatalogQuals(PlannerInfo *root,
@@ -718,8 +559,11 @@ extractCatalogQuals(PlannerInfo *root,
                     List **footprint_quals,
                     List **footprint_joins)
 {
+    
+
+    
     ListCell *l;
-    GeomOpQual *fqual = palloc(sizeof(GeomOpQual));
+    HvaultGeomOpQual *fqual = palloc(sizeof(HvaultGeomOpQual));
 
     foreach(l, baserel->baserestrictinfo)
     {
@@ -736,7 +580,7 @@ extractCatalogQuals(PlannerInfo *root,
                  nodeToString(rinfo->clause));
             fqual->rinfo = rinfo;
             *footprint_quals = lappend(*footprint_quals, fqual);
-            fqual = palloc(sizeof(GeomOpQual));
+            fqual = palloc(sizeof(HvaultGeomOpQual));
         }
     }
 
@@ -753,7 +597,7 @@ extractCatalogQuals(PlannerInfo *root,
                  nodeToString(rinfo->clause));
             fqual->rinfo = rinfo;
             *footprint_joins = lappend(*footprint_joins, fqual);
-            fqual = palloc(sizeof(GeomOpQual));
+            fqual = palloc(sizeof(HvaultGeomOpQual));
         }
     }
     pfree(fqual);
@@ -841,77 +685,61 @@ static void addForeignPaths(PlannerInfo *root,
     double rows;
     Cost startup_cost, total_cost;
     ListCell *l, *m;
-    HvaultDeparseContext deparse_ctx;
     Cost catmin, catmax;
     double catrows;
     int catwidth;
-    int nargs, argno;
-    Oid *argtypes;
     List *predicates, *own_quals, *pred_quals;
     Selectivity selectivity;
+    HvaultCatalogQuery query;
+    List * fdw_expr;
 
     own_quals = list_copy(catalog_quals);
     /* Prepare catalog query */
-    deparse_ctx.table = table;
-    deparse_ctx.fdw_expr = NIL;
-    deparse_ctx.first_qual = true;
-    initStringInfo(&deparse_ctx.query);
-    
-    appendStringInfoString(&deparse_ctx.query, HVAULT_CATALOG_QUERY_PREFIX);
-    appendStringInfoString(&deparse_ctx.query, table->catalog);
-    appendStringInfoChar(&deparse_ctx.query, ' ');
-
+    query = hvaultCatalogInitQuery(table->catalog, 
+                                   table->coltypes, 
+                                   table->natts);
+    hvaultCatalogAddProduct(query, "file");
     foreach(l, catalog_quals)
-    {   
+    {
         RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-        addDeparseItem(&deparse_ctx);
-        deparseExpr(rinfo->clause, &deparse_ctx);
+        hvaultCatalogAddSimpleQual(query, rinfo->clause);
     }
+
+    foreach(l, footprint_quals)
+    {
+        HvaultGeomOpQual *qual = (HvaultGeomOpQual *) lfirst(l);
+        if (qual->catalog_pred.op != HvaultGeomInvalidOp)
+        {
+            hvaultCatalogAddGeometryQual(query, qual);
+        }
+    }
+    fdw_expr = hvaultCatalogGetParams(query);
+
 
     predicates = NIL;
     pred_quals = NIL;
     foreach(l, footprint_quals)
     {
-        GeomOpQual *qual = (GeomOpQual *) lfirst(l);
+        HvaultGeomOpQual *qual = (HvaultGeomOpQual *) lfirst(l);
         HvaultGeomPredicate pred;
-        if (qual->catalog_pred.op != HvaultGeomInvalidOp)
-        {
-            addDeparseItem(&deparse_ctx);
-            deparseFootprintExpr(qual, &deparse_ctx);
-        }
+
         pred.coltype = qual->coltype;
         pred.op = qual->pred.op;
         pred.isneg = qual->pred.isneg;
-        pred.argno = insertFdwExpr(&deparse_ctx.fdw_expr, qual->arg);
+        pred.argno = list_append_unique_pos(&fdw_expr, qual->arg);
         predicates = lappend(predicates, predicateToList(&pred));
         own_quals = lappend(own_quals, qual->rinfo);
         pred_quals = lappend(pred_quals, qual->rinfo);
     }
 
-    nargs = list_length(deparse_ctx.fdw_expr);
-    argtypes = palloc(sizeof(Oid) * nargs);
-    argno = 0;
-    foreach(l, deparse_ctx.fdw_expr)
-    {
-        Node *expr = (Node *) lfirst(l);
-        argtypes[argno] = exprType(expr);
-        argno++;
-    }
-    getQueryCosts(deparse_ctx.query.data, 
-                  nargs, 
-                  argtypes, 
-                  &catmin, 
-                  &catmax, 
-                  &catrows, 
-                  &catwidth);
-    pfree(argtypes);
-    argtypes = NULL;
-
+    hvaultCatalogGetCosts(query, &catmin, &catmax, &catrows, &catwidth);
     selectivity = clauselist_selectivity(root, pred_quals, baserel->relid, 
                                          JOIN_INNER, NULL);
     rows = catrows * selectivity * HVAULT_TUPLES_PER_FILE;
     startup_cost = catmin + STARTUP_COST;
-    total_cost = catmax + STARTUP_COST + rows * PIXEL_COST;
+    /* TODO: predicate cost */
+    total_cost = catmax + STARTUP_COST + catrows * FILE_COST + 
+                 rows * PIXEL_COST;
     forboth(l, pathkeys_list, m, sort_qual_list)
     {
         List *pathkeys = (List *) lfirst(l);
@@ -926,9 +754,9 @@ static void addForeignPaths(PlannerInfo *root,
             path_data = palloc(sizeof(HvaultPathData));    
             path_data->table = table;
             path_data->own_quals = own_quals;
-            path_data->filter = deparse_ctx.query.data;
-            path_data->sort = sort_qual;
-            path_data->fdw_expr = deparse_ctx.fdw_expr;
+            path_data->query = hvaultCatalogCloneQuery(query);
+            hvaultCatalogAddSortQual(query, sort_qual);
+            path_data->fdw_expr = fdw_expr;
             path_data->predicates = predicates;
 
             path = create_foreignscan_path(root, baserel, rows, 
@@ -937,6 +765,8 @@ static void addForeignPaths(PlannerInfo *root,
             add_path(baserel, (Path *) path);
         }
     }
+
+    hvaultCatalogFreeQuery(query);
 }
 
 static void   
@@ -975,7 +805,7 @@ generateJoinPath(PlannerInfo *root,
 
     foreach(l, footprint_joins)
     {
-        GeomOpQual *qual = (GeomOpQual *) lfirst(l);
+        HvaultGeomOpQual *qual = (HvaultGeomOpQual *) lfirst(l);
         if (bms_is_subset(qual->rinfo->clause_relids, relids))
             fquals = lappend(fquals, qual);   
     }
@@ -989,846 +819,5 @@ generateJoinPath(PlannerInfo *root,
     *considered_relids = lcons(relids, *considered_relids);
 }
 
-
-/* -----------------------------------
- *
- * Deparse expression functions
- *
- * These functions examine query clauses and translate them to corresponding 
- * catalog query clauses. It is intended to reduce number of files we need to 
- * scan for the query. Lots of deparse functions are ported from 
- * contrib/postgres_fdw/deparse.c and ruleutils.c. It seems that deparsing 
- * API should be extended somehow to handle such cases.
- *
- * -----------------------------------
- */
-
-static int 
-insertFdwExpr(List **fdw_expr, Expr *node)
-{
-    ListCell *l;
-    int idx = 0;
-
-    foreach(l, *fdw_expr)
-    {
-        if (lfirst(l) == node)
-            break;
-        idx++;
-    }
-    if (idx == list_length(*fdw_expr))
-        *fdw_expr = lappend(*fdw_expr, node);
-    return idx;
-}
-
-
-/* 
- * Deparse expression as runtime computable parameter. 
- * Parameter index directly maps to fdw_expr.
- */
-static void 
-deparseParameter(Expr *node, HvaultDeparseContext *ctx)
-{
-    int idx = insertFdwExpr(&ctx->fdw_expr, node);
-    appendStringInfo(&ctx->query, "$%d", idx + 1);
-}
-
-/*
- * Deparse variable expression. 
- * Local file_id and time variables are mapped to corresponding catalog column.
- * Other local variables are not supported. Footprint variables are processed 
- * separately. Other's table variables are handled as runtime computable 
- * parameters, this is the case of parametrized join path.
- */
-static void
-deparseVar(Var *node, HvaultDeparseContext *ctx)
-{
-    if (node->varno == ctx->table->relid)
-    {
-        /* Catalog column */
-        HvaultColumnType type;
-        char *colname = NULL;
-        
-        Assert(node->varattno > 0);
-        Assert(node->varattno <= ctx->table->natts);
-
-        type = ctx->table->coltypes[node->varattno-1];
-        switch(type)
-        {
-            case HvaultColumnTime:
-                colname = "starttime";
-                
-            break;
-            case HvaultColumnFileIdx:
-                colname = "file_id";
-            break;
-            default:
-                elog(ERROR, "unsupported local column type: %d", type);
-        }
-        appendStringInfoString(&ctx->query, quote_identifier(colname));
-    }
-    else
-    {
-        /* Other table's column, use as parameter */
-        deparseParameter((Expr *) node, ctx);
-    }
-}
-
-static void
-deparseFuncExpr(FuncExpr *node, HvaultDeparseContext *ctx)
-{
-    HeapTuple proctup;
-    Form_pg_proc procform;
-    const char *proname;
-    bool first;
-    ListCell *arg;
-
-    /*
-     * If the function call came from an implicit coercion, then just show the
-     * first argument.
-     */
-    if (node->funcformat == COERCE_IMPLICIT_CAST)
-    {
-        deparseExpr((Expr *) linitial(node->args), ctx);
-        return;
-    }
-
-    /*
-     * If the function call came from a cast, then show the first argument
-     * plus an explicit cast operation.
-     */
-    if (node->funcformat == COERCE_EXPLICIT_CAST)
-    {
-        Oid rettype = node->funcresulttype;
-        int32_t coercedTypmod;
-
-        /* Get the typmod if this is a length-coercion function */
-        (void) exprIsLengthCoercion((Node *) node, &coercedTypmod);
-
-        deparseExpr((Expr *) linitial(node->args), ctx);
-        appendStringInfo(&ctx->query, "::%s",
-                         format_type_with_typemod(rettype, coercedTypmod));
-        return;
-    }
-
-    /*
-     * Normal function: display as proname(args).
-     */
-    proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(node->funcid));
-    if (!HeapTupleIsValid(proctup)) 
-    {
-        elog(ERROR, "cache lookup failed for function %u", node->funcid);
-        return; /* Will never reach here */    
-    }
-    procform = (Form_pg_proc) GETSTRUCT(proctup);
-
-    
-    if (OidIsValid(procform->provariadic))
-    {
-        elog(ERROR, "Variadic functions are not supported");
-    }
-
-    /* Print schema name only if it's not pg_catalog */
-    if (procform->pronamespace != PG_CATALOG_NAMESPACE)
-    {
-        const char *schemaname;
-        schemaname = get_namespace_name(procform->pronamespace);
-        schemaname = quote_identifier(schemaname);
-        appendStringInfo(&ctx->query, "%s.", schemaname);
-    }
-
-    /* Deparse the function name ... */
-    proname = NameStr(procform->proname);
-    appendStringInfo(&ctx->query, "%s(", quote_identifier(proname));
-    /* ... and all the arguments */
-    first = true;
-    foreach(arg, node->args)
-    {
-        if (!first)
-            appendStringInfoString(&ctx->query, ", ");
-        deparseExpr((Expr *) lfirst(arg), ctx);
-        first = false;
-    }
-    appendStringInfoChar(&ctx->query, ')');
-
-    ReleaseSysCache(proctup);
-}
-
-static void
-deparseOperatorName(StringInfo buf, Form_pg_operator opform)
-{
-    /* opname is not a SQL identifier, so we should not quote it. */
-    char *opname = NameStr(opform->oprname);
-
-    /* Print schema name only if it's not pg_catalog */
-    if (opform->oprnamespace != PG_CATALOG_NAMESPACE)
-    {
-        const char *opnspname = get_namespace_name(opform->oprnamespace);
-        /* Print fully qualified operator name. */
-        appendStringInfo(buf, "OPERATOR(%s.%s)",
-                         quote_identifier(opnspname), opname);
-    }
-    else
-    {
-        /* Just print operator name. */
-        appendStringInfo(buf, "%s", opname);
-    }
-}
-
-static void
-deparseOpExpr(OpExpr *node, HvaultDeparseContext *ctx)
-{
-    HeapTuple tuple;
-    Form_pg_operator form;
-    char oprkind;
-    ListCell *arg;
-
-    /* Retrieve information about the operator from system catalog. */
-    tuple = SearchSysCache1(OPEROID, ObjectIdGetDatum(node->opno));
-    if (!HeapTupleIsValid(tuple))
-    {
-        elog(ERROR, "cache lookup failed for operator %u", node->opno);
-        return; /* Will never reach here */
-    }
-    form = (Form_pg_operator) GETSTRUCT(tuple);
-    oprkind = form->oprkind;
-
-    /* Sanity check. */
-    Assert((oprkind == 'r' && list_length(node->args) == 1) ||
-           (oprkind == 'l' && list_length(node->args) == 1) ||
-           (oprkind == 'b' && list_length(node->args) == 2));
-
-    /* Always parenthesize the expression. */
-    appendStringInfoChar(&ctx->query, '(');
-
-    /* Deparse left operand. */
-    if (oprkind == 'r' || oprkind == 'b')
-    {
-        arg = list_head(node->args);
-        deparseExpr(lfirst(arg), ctx);
-        appendStringInfoChar(&ctx->query, ' ');
-    }
-
-    /* Deparse operator name. */
-    deparseOperatorName(&ctx->query, form);
-
-    /* Deparse right operand. */
-    if (oprkind == 'l' || oprkind == 'b')
-    {
-        arg = list_tail(node->args);
-        appendStringInfoChar(&ctx->query, ' ');
-        deparseExpr(lfirst(arg), ctx);
-    }
-
-    appendStringInfoChar(&ctx->query, ')');
-
-    ReleaseSysCache(tuple);
-}
-
-static void
-deparseDistinctExpr(DistinctExpr *node, HvaultDeparseContext *ctx)
-{
-    Assert(list_length(node->args) == 2);
-
-    appendStringInfoChar(&ctx->query, '(');
-    deparseExpr(linitial(node->args), ctx);
-    appendStringInfo(&ctx->query, " IS DISTINCT FROM ");
-    deparseExpr(lsecond(node->args), ctx);
-    appendStringInfoChar(&ctx->query, ')');
-}
-
-static void
-deparseArrayRef(ArrayRef *node, HvaultDeparseContext *ctx)
-{
-    ListCell *lowlist_item;
-    ListCell *uplist_item;
-
-    /* Always parenthesize the expression. */
-    appendStringInfoChar(&ctx->query, '(');
-
-    /*
-     * Deparse and parenthesize referenced array expression first. 
-     */
-    appendStringInfoChar(&ctx->query, '(');
-    deparseExpr(node->refexpr, ctx);
-    appendStringInfoChar(&ctx->query, ')');
-     
-
-    /* Deparse subscript expressions. */
-    lowlist_item = list_head(node->reflowerindexpr);    /* could be NULL */
-    foreach(uplist_item, node->refupperindexpr)
-    {
-        appendStringInfoChar(&ctx->query, '[');
-        if (lowlist_item)
-        {
-            deparseExpr(lfirst(lowlist_item), ctx);
-            appendStringInfoChar(&ctx->query, ':');
-            lowlist_item = lnext(lowlist_item);
-        }
-        deparseExpr(lfirst(uplist_item), ctx);
-        appendStringInfoChar(&ctx->query, ']');
-    }
-
-    appendStringInfoChar(&ctx->query, ')');
-}
-
-static void
-deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, HvaultDeparseContext *ctx)
-{
-    HeapTuple tuple;
-    Form_pg_operator form;
-
-    /* Retrieve information about the operator from system catalog. */
-    tuple = SearchSysCache1(OPEROID, ObjectIdGetDatum(node->opno));
-    if (!HeapTupleIsValid(tuple))
-    {
-        elog(ERROR, "cache lookup failed for operator %u", node->opno);
-        return; /* Will never reach here */
-    }
-    form = (Form_pg_operator) GETSTRUCT(tuple);
-
-    /* Sanity check. */
-    Assert(list_length(node->args) == 2);
-
-    /* Always parenthesize the expression. */
-    appendStringInfoChar(&ctx->query, '(');
-
-    /* Deparse left operand. */
-    deparseExpr(linitial(node->args), ctx);
-    appendStringInfoChar(&ctx->query, ' ');
-    /* Deparse operator name plus decoration. */
-    deparseOperatorName(&ctx->query, form);
-    appendStringInfo(&ctx->query, " %s (", node->useOr ? "ANY" : "ALL");
-    /* Deparse right operand. */
-    deparseExpr(lsecond(node->args), ctx);
-    appendStringInfoChar(&ctx->query, ')');
-
-    /* Always parenthesize the expression. */
-    appendStringInfoChar(&ctx->query, ')');
-
-    ReleaseSysCache(tuple);
-}
-
-static void
-deparseArrayExpr(ArrayExpr *node, HvaultDeparseContext *ctx)
-{
-    bool first = true;
-    ListCell *l;
-
-    appendStringInfo(&ctx->query, "ARRAY[");
-    foreach(l, node->elements)
-    {
-        if (!first)
-            appendStringInfo(&ctx->query, ", ");
-        deparseExpr(lfirst(l), ctx);
-        first = false;
-    }
-    appendStringInfoChar(&ctx->query, ']');
-
-    /* If the array is empty, we need an explicit cast to the array type. */
-    if (node->elements == NIL)
-        appendStringInfo(&ctx->query, "::%s",
-                         format_type_with_typemod(node->array_typeid, -1));
-}
-
-static void
-deparseRelabelType(RelabelType *node, HvaultDeparseContext *ctx)
-{
-    deparseExpr(node->arg, ctx);
-    if (node->relabelformat != COERCE_IMPLICIT_CAST)
-        appendStringInfo(&ctx->query, "::%s",
-                         format_type_with_typemod(node->resulttype,
-                                                  node->resulttypmod));
-}
-
-static void
-deparseBoolExpr(BoolExpr *node, HvaultDeparseContext *ctx)
-{
-    const char *op = NULL;
-    bool first;
-    ListCell *l;
-
-    switch (node->boolop)
-    {
-        case AND_EXPR:
-            op = "AND";
-            break;
-        case OR_EXPR:
-            op = "OR";
-            break;
-        case NOT_EXPR:
-            appendStringInfo(&ctx->query, "(NOT ");
-            deparseExpr(linitial(node->args), ctx);
-            appendStringInfoChar(&ctx->query, ')');
-            return;
-        default:
-            elog(ERROR, "Unknown boolean expression type %d", node->boolop);
-    }
-
-    appendStringInfoChar(&ctx->query, '(');
-    first = true;
-    foreach(l, node->args)
-    {
-        if (!first)
-            appendStringInfo(&ctx->query, " %s ", op);
-        deparseExpr((Expr *) lfirst(l), ctx);
-        first = false;
-    }
-    appendStringInfoChar(&ctx->query, ')');
-}
-
-static void
-deparseNullTest(NullTest *node, HvaultDeparseContext *ctx)
-{
-    appendStringInfoChar(&ctx->query, '(');
-    deparseExpr(node->arg, ctx);
-    if (node->nulltesttype == IS_NULL)
-        appendStringInfo(&ctx->query, " IS NULL)");
-    else
-        appendStringInfo(&ctx->query, " IS NOT NULL)");
-}
-
-static void 
-deparseConstant(Const *node, HvaultDeparseContext *ctx)
-{
-    Oid typoutput;
-    bool typIsVarlena;
-    char *extval, *quoted = NULL;
-
-    if (node->constisnull)
-    {
-        appendStringInfo(&ctx->query, "NULL");
-        appendStringInfo(&ctx->query, "::%s",
-                         format_type_with_typemod(node->consttype,
-                                                  node->consttypmod));
-        return;
-    }
-
-    getTypeOutputInfo(node->consttype,
-                      &typoutput, &typIsVarlena);
-    extval = OidOutputFunctionCall(typoutput, node->constvalue);
-
-    switch (node->consttype)
-    {
-        case INT2OID:
-        case INT4OID:
-        case INT8OID:
-        case OIDOID:
-        case FLOAT4OID:
-        case FLOAT8OID:
-        case NUMERICOID:
-            {
-                /*
-                 * No need to quote unless it's a special value such as 'NaN'.
-                 * See comments in get_const_expr().
-                 */
-                if (strspn(extval, "0123456789+-eE.") == strlen(extval))
-                {
-                    if (extval[0] == '+' || extval[0] == '-')
-                        appendStringInfo(&ctx->query, "(%s)", extval);
-                    else
-                        appendStringInfoString(&ctx->query, extval);
-                }
-                else
-                    appendStringInfo(&ctx->query, "'%s'", extval);
-            }
-            break;
-        case BITOID:
-        case VARBITOID:
-            appendStringInfo(&ctx->query, "B'%s'", extval);
-            break;
-        case BOOLOID:
-            if (strcmp(extval, "t") == 0)
-                appendStringInfoString(&ctx->query, "true");
-            else
-                appendStringInfoString(&ctx->query, "false");
-            break;
-        default:
-            quoted = quote_literal_cstr(extval);
-            appendStringInfoString(&ctx->query, quoted);
-            pfree(quoted);
-            quoted = NULL;
-            break;
-    }
-
-    appendStringInfo(&ctx->query, "::%s",
-                     format_type_with_typemod(node->consttype,
-                                              node->consttypmod));
-}
-
-static void
-deparseExpr(Expr *node, HvaultDeparseContext *ctx)
-{
-    if (node == NULL)
-        return;
-
-    switch (nodeTag(node))
-    {
-        case T_Var:
-            deparseVar((Var *) node, ctx);
-            break;
-        case T_Const:
-            deparseConstant((Const *) node, ctx);
-            break;
-        case T_Param:
-            deparseParameter(node, ctx);
-            break;
-        case T_FuncExpr:
-            deparseFuncExpr((FuncExpr *) node, ctx);
-            break;
-        case T_OpExpr:
-            deparseOpExpr((OpExpr *) node, ctx);
-            break;
-        case T_DistinctExpr:
-            deparseDistinctExpr((DistinctExpr *) node, ctx);
-            break;
-        case T_ArrayRef:
-            deparseArrayRef((ArrayRef *) node, ctx);
-        case T_ScalarArrayOpExpr:
-            deparseScalarArrayOpExpr((ScalarArrayOpExpr *) node, ctx);
-            break;
-        case T_ArrayExpr:
-            deparseArrayExpr((ArrayExpr *) node, ctx);
-            break;
-        case T_RelabelType:
-            deparseRelabelType((RelabelType *) node, ctx);
-            break;
-        case T_BoolExpr:
-            deparseBoolExpr((BoolExpr *) node, ctx);
-            break;
-        case T_NullTest:
-            deparseNullTest((NullTest *) node, ctx);
-            break;
-        default:
-            elog(ERROR, "unsupported expression type for deparse: %d",
-                 (int) nodeTag(node));
-            break;
-    }
-}
-
-static void
-addDeparseItem(HvaultDeparseContext *ctx)
-{
-    if (ctx->first_qual)
-    {
-        appendStringInfoString(&ctx->query, "WHERE ");
-        ctx->first_qual = false;
-    }
-    else 
-    {
-        appendStringInfoString(&ctx->query, " AND ");
-    }
-}
-
-/* -----------------------------------
- *
- * Footprint expression functions
- *
- * -----------------------------------
- */
-
-char * geomopstr[HvaultGeomNumAllOpers] = {
-
-    /* HvaultGeomOverlaps  -> */ "&&",
-    /* HvaultGeomContains  -> */ "~",
-    /* HvaultGeomWithin    -> */ "@",
-    /* HvaultGeomSame      -> */ "~=",
-    /* HvaultGeomOverleft  -> */ "&<",
-    /* HvaultGeomOverright -> */ "&>",
-    /* HvaultGeomOverabove -> */ "|&>",
-    /* HvaultGeomOverbelow -> */ "&<|",
-    /* HvaultGeomLeft      -> */ "<<",
-    /* HvaultGeomRight     -> */ ">>",
-    /* HvaultGeomAbove     -> */ "|>>",
-    /* HvaultGeomBelow     -> */ "<<|",
-    /* HvaultGeomCommLeft  -> */ "&<",
-    /* HvaultGeomCommRight -> */ "&>",
-    /* HvaultGeomCommAbove -> */ "|&>",
-    /* HvaultGeomCommBelow -> */ "&<|",
-};
-
-static HvaultGeomOperator geomopcomm[HvaultGeomNumAllOpers] = 
-{
-    /* HvaultGeomOverlaps  -> */ HvaultGeomOverlaps,
-    /* HvaultGeomContains  -> */ HvaultGeomWithin,
-    /* HvaultGeomWithin    -> */ HvaultGeomContains,
-    /* HvaultGeomSame      -> */ HvaultGeomSame,
-    /* HvaultGeomOverleft  -> */ HvaultGeomCommLeft,
-    /* HvaultGeomOverright -> */ HvaultGeomCommRight,
-    /* HvaultGeomOverabove -> */ HvaultGeomCommAbove,
-    /* HvaultGeomOverbelow -> */ HvaultGeomCommBelow,
-    /* HvaultGeomLeft      -> */ HvaultGeomRight,
-    /* HvaultGeomRight     -> */ HvaultGeomLeft,
-    /* HvaultGeomAbove     -> */ HvaultGeomBelow,
-    /* HvaultGeomBelow     -> */ HvaultGeomAbove,
-    /* HvaultGeomCommLeft  -> */ HvaultGeomOverleft,
-    /* HvaultGeomCommRight -> */ HvaultGeomOverright,
-    /* HvaultGeomCommAbove -> */ HvaultGeomOverabove,
-    /* HvaultGeomCommBelow -> */ HvaultGeomOverbelow,
-};
-
-static GeomPredicateDesc geomopmap[2*HvaultGeomNumAllOpers] = 
-{
-    /* HvaultGeomOverlaps  -> */ { HvaultGeomOverlaps,  false },
-    /* HvaultGeomContains  -> */ { HvaultGeomContains,  false },
-    /* HvaultGeomWithin    -> */ { HvaultGeomOverlaps,  false },
-    /* HvaultGeomSame      -> */ { HvaultGeomContains,  false },
-    /* HvaultGeomOverleft  -> */ { HvaultGeomRight,     true  },
-    /* HvaultGeomOverright -> */ { HvaultGeomLeft,      true  },
-    /* HvaultGeomOverabove -> */ { HvaultGeomBelow,     true  },
-    /* HvaultGeomOverbelow -> */ { HvaultGeomAbove,     true  },
-    /* HvaultGeomLeft      -> */ { HvaultGeomOverright, true  },
-    /* HvaultGeomRight     -> */ { HvaultGeomOverleft,  true  },
-    /* HvaultGeomAbove     -> */ { HvaultGeomOverbelow, true  },
-    /* HvaultGeomBelow     -> */ { HvaultGeomOverabove, true  },
-    /* HvaultGeomCommLeft  -> */ { HvaultGeomCommLeft,  false },
-    /* HvaultGeomCommRight -> */ { HvaultGeomCommRight, false },
-    /* HvaultGeomCommAbove -> */ { HvaultGeomCommAbove, false },
-    /* HvaultGeomCommBelow -> */ { HvaultGeomCommBelow, false },
-
-    /* Negative predicate map */
-
-    /* HvaultGeomOverlaps  -> */ { HvaultGeomWithin,    true  },
-    /* HvaultGeomContains  -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomWithin    -> */ { HvaultGeomWithin,    true  },
-    /* HvaultGeomSame      -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomOverleft  -> */ { HvaultGeomOverleft,  true  },
-    /* HvaultGeomOverright -> */ { HvaultGeomOverright, true  },
-    /* HvaultGeomOverabove -> */ { HvaultGeomOverabove, true  },
-    /* HvaultGeomOverbelow -> */ { HvaultGeomOverbelow, true  },
-    /* HvaultGeomLeft      -> */ { HvaultGeomLeft,      true  },
-    /* HvaultGeomRight     -> */ { HvaultGeomRight,     true  },
-    /* HvaultGeomAbove     -> */ { HvaultGeomAbove,     true  },
-    /* HvaultGeomBelow     -> */ { HvaultGeomBelow,     true  },
-    /* HvaultGeomCommLeft  -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomCommRight -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomCommAbove -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomCommBelow -> */ { HvaultGeomInvalidOp, false },
-};
-
-static inline GeomPredicateDesc
-mapGeomPredicate(GeomPredicateDesc const p)
-{
-    return geomopmap[HvaultGeomNumAllOpers * p.isneg + p.op];
-}
-
-static Oid
-getGeometryOpOid(char const *opname, SPIPlanPtr prep_stmt)
-{
-    Datum param[1];
-    Datum val;
-    bool isnull;
-
-    param[0] = CStringGetTextDatum(opname);
-    if (SPI_execute_plan(prep_stmt, param, " ", true, 1) != SPI_OK_SELECT ||
-        SPI_processed != 1 || 
-        SPI_tuptable->tupdesc->natts != 1 ||
-        SPI_tuptable->tupdesc->attrs[0]->atttypid != OIDOID)
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't find geometry operator %s", opname)));
-        return InvalidOid; /* Will never reach this */
-    }
-
-    val = heap_getattr(SPI_tuptable->vals[0], 1, 
-                       SPI_tuptable->tupdesc, &isnull);
-    if (isnull)
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't find geometry operator %s", opname)));
-        return InvalidOid; /* Will never reach this */            
-    } 
-    return DatumGetObjectId(val);
-}
-
-static void
-getGeometryOpers(HvaultTableInfo *table)
-{
-    SPIPlanPtr prep_stmt;
-    Oid argtypes[1];
-    int i;
-
-    if (SPI_connect() != SPI_OK_CONNECT)
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                     errmsg("Can't connect to SPI")));
-        return; /* Will never reach this */
-    }
-    
-    argtypes[0] = TEXTOID;
-    prep_stmt = SPI_prepare(GEOMETRY_OP_QUERY, 1, argtypes);
-    if (!prep_stmt)
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't prepare geometry operator query")));
-        return; /* Will never reach this */
-    }
-
-    for (i = 0; i < HvaultGeomNumRealOpers; i++)
-    {
-        table->geomopers[i] = getGeometryOpOid(geomopstr[i], prep_stmt);
-    }
-    
-    if (SPI_finish() != SPI_OK_FINISH)    
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't finish access to SPI")));
-        return; /* Will never reach this */   
-    }
-}
-
-static inline HvaultGeomOperator
-getGeometryOper(Oid opno, const HvaultTableInfo *table)
-{
-    int i;
-    for(i = 0; i < HvaultGeomNumRealOpers; ++i)
-        if (table->geomopers[i] == opno) 
-            return i;
-    return HvaultGeomInvalidOp;
-}
-
-static bool
-isFootprintOpArgs(Expr *varnode, 
-                  Expr *arg, 
-                  const HvaultTableInfo *table, 
-                  HvaultColumnType *coltype)
-{
-    Var *var;
-
-    if (!IsA(varnode, Var))
-        return false;
-
-    var = (Var *) varnode;
-    if (var->varno != table->relid)
-        return false;
-
-    *coltype = table->coltypes[var->varattno - 1];
-    if (*coltype != HvaultColumnPoint && *coltype != HvaultColumnFootprint)
-        return false;
-
-    return true;
-}
-
-static bool
-isFootprintOp(Expr *expr, 
-              const HvaultTableInfo *table, 
-              GeomOpQual *qual)
-{
-    OpExpr *opexpr;
-    Expr *first, *second;
-
-    if (!IsA(expr, OpExpr))
-        return false;
-
-    opexpr = (OpExpr *) expr;
-
-    if (list_length(opexpr->args) != 2)
-        return false;
-
-    qual->pred.op = getGeometryOper(opexpr->opno, table);
-    if (qual->pred.op == HvaultGeomInvalidOp)
-        return false;
-
-    first = linitial(opexpr->args);
-    second = lsecond(opexpr->args);
-    if (isFootprintOpArgs(first, second, table, &qual->coltype))
-    {
-        qual->var = (Var *) first;
-        qual->arg = second;
-    }
-    else if (isFootprintOpArgs(second, first, table, &qual->coltype))
-    {
-        qual->var = (Var *) second;
-        qual->arg = first;
-        qual->pred.op = geomopcomm[qual->pred.op];
-    }
-    else 
-    {
-        /* We support only simple var = const expressions */
-        return false;
-    }
-
-    if (!isCatalogQual(qual->arg, table))
-        return false;
-
-    
-    return true;
-}
-
-static bool 
-isFootprintNegOp(Expr *expr, 
-                 const HvaultTableInfo *table,
-                 GeomOpQual *qual)
-{
-    BoolExpr *boolexpr;
-
-    if (!IsA(expr, BoolExpr))
-        return false;
-
-    boolexpr = (BoolExpr *) expr;
-
-    if (boolexpr->boolop != NOT_EXPR)
-        return false;
-
-    if (list_length(boolexpr->args) != 1)
-        return false;
-
-    if (!isFootprintOp(linitial(boolexpr->args), table, qual))
-        return false;
-
-    return true;
-}
-
-static bool
-isFootprintQual(Expr *expr, const HvaultTableInfo *table, GeomOpQual *qual)
-{
-    bool res = false;
-    if (isFootprintOp(expr, table, qual)) 
-    {
-        qual->pred.isneg = false;
-        res = true;
-    }
-
-    if (isFootprintNegOp(expr, table, qual)) 
-    {
-        qual->pred.isneg = true;
-        res = true;
-    }
-
-    if (res)
-    {
-        qual->catalog_pred = mapGeomPredicate(qual->pred);
-        return true;
-    }
-    else 
-    {
-        return false;
-    }
-}
-
-static void
-deparseFootprintExpr(GeomOpQual *qual, HvaultDeparseContext *ctx)
-{
-    Assert(qual->catalog_pred.op != HvaultGeomInvalidOp);
-
-    if (qual->catalog_pred.isneg)
-        appendStringInfoString(&ctx->query, "NOT ");
-    
-    appendStringInfoChar(&ctx->query, '(');
-    if (qual->catalog_pred.op < HvaultGeomNumRealOpers) 
-    {
-        appendStringInfoString(&ctx->query, "footprint ");
-        appendStringInfoString(&ctx->query, geomopstr[qual->catalog_pred.op]);
-        appendStringInfoChar(&ctx->query, ' ');
-        deparseExpr(qual->arg, ctx);
-    }
-    else
-    {
-        deparseExpr(qual->arg, ctx);  
-        appendStringInfoChar(&ctx->query, ' ');
-        appendStringInfoString(&ctx->query, geomopstr[qual->catalog_pred.op]);
-        appendStringInfoString(&ctx->query, " footprint");
-    }
-    appendStringInfoChar(&ctx->query, ')');
-}
 
 

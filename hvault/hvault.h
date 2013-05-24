@@ -16,52 +16,13 @@
 /* PostGIS */
 #include <liblwgeom.h>
 
+#include "common.h"
+#include "catalog.h"
+
 #define HVAULT_TUPLES_PER_FILE (double)(2030*1354)
 #define HVAULT_CATALOG_QUERY_PREFIX "SELECT file_id, filename, starttime FROM "
 
-typedef enum HvaultColumnType
-{
-    HvaultColumnNull,
-    HvaultColumnPoint,
-    HvaultColumnFootprint,
-    HvaultColumnFileIdx,
-    HvaultColumnLineIdx,
-    HvaultColumnSampleIdx,
-    HvaultColumnTime,
-    HvaultColumnFloatVal,
-    HvaultColumnInt8Val,
-    HvaultColumnInt16Val,
-    HvaultColumnInt32Val,
-    HvaultColumnInt64Val
-} HvaultColumnType;
 
-typedef enum 
-{  
-    HvaultGeomInvalidOp = -1,
-
-    HvaultGeomOverlaps = 0,/* &&  */
-    HvaultGeomContains,    /* ~   */
-    HvaultGeomWithin,      /* @   */
-    HvaultGeomSame,        /* ~=  */
-    HvaultGeomOverleft,    /* &<  */
-    HvaultGeomOverright,   /* &>  */
-    HvaultGeomOverabove,   /* |&> */
-    HvaultGeomOverbelow,   /* &<| */
-    HvaultGeomLeft,        /* <<  */
-    HvaultGeomRight,       /* >>  */
-    HvaultGeomAbove,       /* |>> */
-    HvaultGeomBelow,       /* <<| */
-
-    HvaultGeomNumRealOpers,
-
-    /* fake commutators */
-    HvaultGeomCommLeft = HvaultGeomNumRealOpers,
-    HvaultGeomCommRight,
-    HvaultGeomCommAbove,
-    HvaultGeomCommBelow,
-
-    HvaultGeomNumAllOpers
-} HvaultGeomOperator;
 
 enum HvaultPlanItems
 {
@@ -116,16 +77,16 @@ typedef struct
     clock_t open_time;              /* time when file was opened */
 } HvaultHDFFile;
 
-typedef struct
-{
-    char const *query;         /* Catalog query string */
+// typedef struct
+// {
+//     char const *query;         /* Catalog query string */
 
-    SPIPlanPtr prep_stmt;
-    char const *file_cursor_name; /* Name of catalog query cursor */
-    Oid *argtypes;
-    Datum *argvals;
-    char *argnulls;
-} HvaultCatalogCursor;
+//     SPIPlanPtr prep_stmt;
+//     char const *file_cursor_name; /* Name of catalog query cursor */
+//     Oid *argtypes;
+//     Datum *argvals;
+//     char *argnulls;
+// } HvaultCatalogCursor;
 
 /*
  * FDW-specific information for ForeignScanState.fdw_state.
@@ -143,7 +104,7 @@ typedef struct
     List *predicates;    /* List of HvaultGeomPredicate */
 
     /* iteration state */
-    HvaultCatalogCursor *cursor;
+    HvaultCatalogCursor cursor;
     /* file */
     HvaultHDFFile file;           /* current file */
     HvaultSDSBuffer **colbuffer;  /* SDS buffer references for each column */
@@ -194,7 +155,7 @@ HvaultColumnType *hvaultGetUsedColumns(PlannerInfo *root,
                                        Oid foreigntableid,
                                        AttrNumber natts);
 List *hvaultGetAllColumns(Relation relation);
-double hvaultGetNumFiles(char *catalog);
+double hvaultGetNumFiles(char const *catalog);
 
 static inline char * 
 hvaultGetTableOptionString(Oid foreigntableid, char *option)
