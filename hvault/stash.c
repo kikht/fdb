@@ -87,3 +87,122 @@ addDeparseItem(HvaultDeparseContext *ctx)
         appendStringInfoString(&ctx->query, " AND ");
     }
 }
+
+
+
+RestrictInfo *rinfo = lfirst(l);
+        if (isCatalogQual(rinfo->clause, table))
+        {
+            elog(DEBUG2, "Detected catalog qual %s", 
+                 nodeToString(rinfo->clause));
+            *catalog_quals = lappend(*catalog_quals, rinfo);
+        } 
+        else if (isFootprintQual(rinfo->clause, table, fqual))
+        {
+            elog(DEBUG2, "Detected footprint qual %s", 
+                 nodeToString(rinfo->clause));
+            fqual->rinfo = rinfo;
+            *footprint_quals = lappend(*footprint_quals, fqual);
+            fqual = palloc(sizeof(HvaultGeomOpQual));
+        }
+
+
+foreach(l, baserel->baserestrictinfo)
+    {
+        RestrictInfo *rinfo = lfirst(l);
+        HvaultQual * qual = hvaultAnalyzerProcess(analyzer, rinfo);
+        if (qual)
+        {
+            *static_quals = lappend(*static_quals, qual);
+        }
+    }
+
+
+
+foreach(l, root->eq_classes)
+    {
+        EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
+        Var *catalog_var = isCatalogJoinEC(ec, table);
+        if (catalog_var != NULL)
+        {
+            *catalog_ec = lappend(*catalog_ec, ec);
+            *catalog_ec_vars = lappend(*catalog_ec_vars, catalog_var);
+        }
+    }
+
+static void
+getQueryCosts(char const *query,
+              int nargs, 
+              Oid *argtypes, 
+              Cost *startup_cost,
+              Cost *total_cost,
+              double *plan_rows,
+              int *plan_width)
+{
+    MemoryContext oldmemctx, memctx;
+    List *parsetree, *stmt_list;
+    PlannedStmt *plan;
+
+    memctx = AllocSetContextCreate(CurrentMemoryContext, 
+                                   "hvaultQueryCosts context", 
+                                   ALLOCSET_DEFAULT_MINSIZE,
+                                   ALLOCSET_DEFAULT_INITSIZE,
+                                   ALLOCSET_DEFAULT_MAXSIZE);
+    oldmemctx = MemoryContextSwitchTo(memctx);
+
+    parsetree = pg_parse_query(query);
+    Assert(list_length(parsetree) == 1);
+    stmt_list = pg_analyze_and_rewrite(linitial(parsetree), 
+                                       query, 
+                                       argtypes, 
+                                       nargs);
+    Assert(list_length(stmt_list) == 1);
+    plan = pg_plan_query((Query *) linitial(stmt_list), 
+                         CURSOR_OPT_GENERIC_PLAN, 
+                         NULL);
+
+    *startup_cost = plan->planTree->startup_cost;
+    *total_cost = plan->planTree->total_cost;
+    *plan_rows = plan->planTree->plan_rows;
+    *plan_width = plan->planTree->plan_width;
+
+    MemoryContextSwitchTo(oldmemctx);
+    MemoryContextDelete(memctx);
+}
+
+
+static bool 
+bms_equal_any(Relids relids, List *relids_list)
+{
+    ListCell   *lc;
+
+    foreach(lc, relids_list)
+    {
+        if (bms_equal(relids, (Relids) lfirst(lc)))
+            return true;
+    }
+    return false;
+}
+
+
+
+static List *
+predicateToList(HvaultGeomPredicate *p)
+{
+    return list_make4_int(p->coltype, p->op, p->argno, p->isneg);
+}
+
+
+foreach(l, footprint_quals)
+    {
+        HvaultGeomOpQual *qual = (HvaultGeomOpQual *) lfirst(l);
+        HvaultGeomPredicate pred;
+
+        pred.coltype = qual->coltype;
+        pred.op = qual->pred.op;
+        pred.isneg = qual->pred.isneg;
+        pred.argno = list_append_unique_pos(&fdw_expr, qual->arg);
+        predicates = lappend(predicates, predicateToList(&pred));
+        own_quals = lappend(own_quals, qual->rinfo);
+        pred_quals = lappend(pred_quals, qual->rinfo);
+    }

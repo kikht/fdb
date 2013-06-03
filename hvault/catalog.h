@@ -23,8 +23,7 @@ typedef enum {
  */
 
 /* Creates new catalog query builder and initialize it*/
-HvaultCatalogQuery hvaultCatalogInitQuery (char *             catalog,
-                                           HvaultTableInfo *  table);
+HvaultCatalogQuery hvaultCatalogInitQuery (HvaultTableInfo const * table);
 
 /* Creates deep copy of a query */
 HvaultCatalogQuery hvaultCatalogCloneQuery (HvaultCatalogQuery query);
@@ -35,13 +34,9 @@ void hvaultCatalogFreeQuery (HvaultCatalogQuery query);
 /* Add required product to query */
 void hvaultCatalogAddProduct (HvaultCatalogQuery query, char const * name);
 
-/* Add simple catalog qual to query */
-void hvaultCatalogAddSimpleQual (HvaultCatalogQuery query, 
-                                 Expr *             expr);
-
-/* Add geometry predicate qual to query */
-void hvaultCatalogAddGeometryQual (HvaultCatalogQuery query, 
-                                   HvaultGeomOpQual   qual);
+/* Add catalog qual to query */
+void hvaultCatalogAddQual (HvaultCatalogQuery query,
+                           HvaultQual *       qual);
 
 /* Add sort qual to query */
 void hvaultCatalogAddSortQual (HvaultCatalogQuery query, 

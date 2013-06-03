@@ -1,5 +1,6 @@
 #include <postgres.h>
 #include <nodes/pg_list.h>
+#include <nodes/relation.h>
 
 static inline int 
 list_append_unique_pos (List ** list, void * item)
@@ -19,3 +20,5 @@ list_append_unique_pos (List ** list, void * item)
 
     return idx;
 }
+
+bool bms_equal_any(Relids relids, List *relids_list);

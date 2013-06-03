@@ -4,31 +4,47 @@
 #include "common.h"
 #include <optimizer/restrictinfo.h>
 
-typedef enum {
-    HvaultQualDefault,
+typedef enum 
+{
     HvaultQualSimple,
     HvaultQualGeom
 } HvaultQualType;
 
 /* Base struct for hvault qual data */
-typedef struct {
+typedef struct 
+{
     HvaultQualType type;
     RestrictInfo * rinfo;
     /* private data */
 } HvaultQual;
 
+typedef struct 
+{
+    EquivalenceClass * ec;
+    Var * var;
+} HvaultEC;
+
 typedef struct HvaultQualAnalyzerData * HvaultQualAnalyzer;
 
 
 /* Initialize analyzer. Reads geometry oper oids */
-HvaultQualAnalyzer HvaultAnalyzerInit (HvaultTableInfo const * table);
+HvaultQualAnalyzer hvaultAnalyzerInit (HvaultTableInfo const * table);
 
 /* Free analyer resources */
-void HvaultAnalyzerFree (HvaultQualAnalyzer analyzer);
+void hvaultAnalyzerFree (HvaultQualAnalyzer analyzer);
 
-/* Process one restrict info */
-HvaultQual HvaultAnalyzerProcess (HvaultQualAnalyzer analyzer, 
-                                  RestrictInfo *     rinfo);
+/* Process list of restrict infos and 
+   return list of interesting HvaultQuals */
+List * hvaultAnalyzeQuals (HvaultQualAnalyzer analyzer, List * quals);
+
+/* Process list of equivalence classes and 
+   return list of interesting HvaultECs */
+List * hvaultAnalyzeECs (HvaultQualAnalyzer analyzer, List * ecs);
+
+/* Create predicate data represented as List from qual if possible
+   Returns NULL if predicate is not available for this qual */
+List * hvaultCreatePredicate (HvaultQual * qual, List * fdw_expr);
+
 
 // bool isCatalogQual (Expr *expr, HvaultTableInfo const *table);
 
