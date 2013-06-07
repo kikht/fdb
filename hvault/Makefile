@@ -10,29 +10,16 @@ CFLAGS = -fPIC -D_POSIX_C_SOURCE -DUSE_ASSERT_CHECKING \
 # optimization flags
 CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING
 
-hvault.so: hvault.o interpolate.o hdf.o metaload.o plan.o utils.o predicates.o
+OBJ = analyze.o catalog.o deparse.o execute.o hdf.o hvault.o interpolate.o \
+      metaload.o options.o plan.o predicates.o utils.o 
+HEADERS = analyze.h catalog.h common.h deparse.h execute.h hdf.h interpolate.h \
+          options.h utils.h
+
+hvault.so: $(OBJ)
 	gcc $(CFLAGS) -shared -Wl,-soname,$@ -o $@ $^ $(LIB)
 
-metaload.o: metaload.c
+%.o: %.c $(HEADERS)
 	gcc $(CFLAGS) $(INC) -o $@ -c $<
-
-utils.o: utils.c hvault.h
-	gcc $(CFLAGS) $(INC) -o $@ -c $<
-
-interpolate.o: interpolate.c
-	gcc $(CFLAGS) $(INC) -o $@ -c $<
-
-hdf.o: hdf.c hdf.h hvault.h
-	gcc $(CFLAGS) $(INC) -o $@ -c $<	
-
-plan.o: plan.c hvault.h
-	gcc $(CFLAGS) $(INC) -o $@ -c $<
-
-hvault.o: hvault.c hvault.h hdf.h
-	gcc $(CFLAGS) $(INC) -o $@ -c $<
-
-predicates.o: predicates.c hvault.h hdf.h
-	gcc $(CFLAGS) $(INC) -o $@ -c $<	
 
 clean:
 	rm -rf *.o *.so

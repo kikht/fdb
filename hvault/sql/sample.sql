@@ -73,7 +73,7 @@ SELECT file_id, line_id, sample_id,
        ST_AsText(point) point 
     FROM test_catalog 
     WHERE ST_Contains(footprint, ST_GeometryFromText('POINT( 61.16 100.90)')) 
-    ORDER BY tstamp;
+    ORDER BY time;
 
 
 SELECT file_id, line_id, sample_id 

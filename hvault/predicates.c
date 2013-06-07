@@ -1,4 +1,3 @@
-#include "hvault.h"
 #include "hdf.h"
 
 static inline bool 

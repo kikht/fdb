@@ -1,7 +1,7 @@
 #ifndef _HDF_H_
 #define _HDF_H_
 
-#include "hvault.h"
+#include "execute.h"
 #define int8 hdf_int8
 #include <hdf/mfhdf.h>
 #undef int8

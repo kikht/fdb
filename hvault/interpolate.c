@@ -1,4 +1,4 @@
-#include <stdlib.h>
+#include "interpolate.h"
 
 /*
  * p1---p2
