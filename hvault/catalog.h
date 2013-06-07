@@ -1,21 +1,16 @@
 #ifndef _CATALOG_H_
 #define _CATALOG_H_
 
-
-#include <postgres.h>
-#include <datatype/timestamp.h>
-#include <nodes/primnodes.h>
-
 #include "common.h"
 #include "analyze.h"
 
 typedef struct HvaultCatalogQueryData * HvaultCatalogQuery;
 typedef struct HvaultCatalogCursorData * HvaultCatalogCursor;
-typedef int HvaultCatalogRecordId;
 typedef enum {
     HvaultCatalogCursorOK,
     HvaultCatalogCursorNotStarted,
-    HvaultCatalogCursorEOF
+    HvaultCatalogCursorEOF,
+    HvaultCatalogCursorError
 } HvaultCatalogCursorResult;
 
 /*
@@ -39,12 +34,12 @@ void hvaultCatalogAddQual (HvaultCatalogQuery query,
                            HvaultQual *       qual);
 
 /* Add sort qual to query */
-void hvaultCatalogAddSortQual (HvaultCatalogQuery query, 
-                               char const *       qual);
+void hvaultCatalogSetSort (HvaultCatalogQuery query, 
+                           char const *       qual);
 
 /* Add limit qual to query */
-void hvaultCatalogAddLimitQual (HvaultCatalogQuery query, 
-                                size_t             limit);
+void hvaultCatalogSetLimit (HvaultCatalogQuery query, 
+                            size_t             limit);
 
 /* Get list of required parameter expressions that need to be evaluated 
    and passed to query cursor */
@@ -66,7 +61,8 @@ List * hvaultCatalogPackQuery(HvaultCatalogQuery query);
  */
 
 /* Creates new catalog cursor and initializes it with packed query */
-HvaultCatalogCursor hvaultCatalogInitCursor (List * packed_query);
+HvaultCatalogCursor hvaultCatalogInitCursor (List * packed_query,
+                                             MemoryContext memctx);
 
 /* Destroys cursor and all it's data */
 void hvaultCatalogFreeCursor (HvaultCatalogCursor cursor);
@@ -81,11 +77,17 @@ void hvaultCatalogStartCursor (HvaultCatalogCursor cursor,
    HvaultCatalogCursorNotStarted */
 void hvaultCatlogResetCursor (HvaultCatalogCursor cursor);
 
+/* Returns number of parameters in catalog query */
+int hvaultCatalogGetNumArgs (HvaultCatalogCursor cursor);
+
+/* Returns catalog cursor's query string */
+char const * hvaultCatalogGetQuery (HvaultCatalogCursor cursor);
+
 /* Moves cursor to the next catalog record */
 HvaultCatalogCursorResult hvaultCatalogNext (HvaultCatalogCursor cursor);
 
 /* Gets current record's id */
-HvaultCatalogRecordId hvaultCatalogGetId (HvaultCatalogCursor cursor);
+int hvaultCatalogGetId (HvaultCatalogCursor cursor);
 
 /* Get current records's start time */
 Timestamp hvaultCatalogGetStarttime (HvaultCatalogCursor cursor);
@@ -95,6 +97,14 @@ Timestamp hvaultCatalogGetStoptime (HvaultCatalogCursor cursor);
 
 /* Get current record's product filename */
 char const * hvaultCatalogGetFilename (HvaultCatalogCursor cursor,
-                                       char *              product);
+                                       char const *        product);
+
+
+/*
+ * Other functions
+ */
+
+double hvaultGetNumFiles(char const *catalog);
+
 
 #endif

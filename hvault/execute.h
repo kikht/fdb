@@ -1,28 +1,10 @@
-#ifndef _HVAULT_H_
-#define _HVAULT_H_
-
-#include <time.h>
-/* PostgreSQL */
-
-#include <postgres.h>
-#include <funcapi.h>
-#include <access/attnum.h>
-#include <executor/spi.h>
-#include <nodes/pg_list.h>
-#include <nodes/relation.h>
-#include <utils/palloc.h>
-#include <commands/defrem.h>
-
-/* PostGIS */
-#include <liblwgeom.h>
+#ifndef _EXECUTE_H_
+#define _EXECUTE_H_
 
 #include "common.h"
 #include "catalog.h"
-
-#define HVAULT_TUPLES_PER_FILE (double)(2030*1354)
-#define HVAULT_CATALOG_QUERY_PREFIX "SELECT file_id, filename, starttime FROM "
-
-
+#include <liblwgeom.h>
+#include <time.h>
 
 enum HvaultPlanItems
 {
@@ -42,14 +24,6 @@ enum HvaultPredicateItems
 
     HvaultPredicateNumParams
 };
-
-typedef struct 
-{
-    HvaultColumnType coltype;
-    HvaultGeomOperator op;
-    int argno;
-    bool isneg;
-} HvaultGeomPredicate;
 
 typedef struct 
 {
@@ -76,17 +50,6 @@ typedef struct
     int num_samples, num_lines;     /* dimensions of file datasets */
     clock_t open_time;              /* time when file was opened */
 } HvaultHDFFile;
-
-// typedef struct
-// {
-//     char const *query;         /* Catalog query string */
-
-//     SPIPlanPtr prep_stmt;
-//     char const *file_cursor_name; /* Name of catalog query cursor */
-//     Oid *argtypes;
-//     Datum *argvals;
-//     char *argnulls;
-// } HvaultCatalogCursor;
 
 /*
  * FDW-specific information for ForeignScanState.fdw_state.
@@ -125,62 +88,4 @@ typedef struct
     POINTARRAY *ptarray; /* Point array for footprint */
 } HvaultExecState;
 
-/* hvault.c */
-extern Datum hvault_fdw_validator(PG_FUNCTION_ARGS);
-extern Datum hvault_fdw_handler(PG_FUNCTION_ARGS);
-
-
-/* interpolate.c */
-void interpolate_line(size_t m, float const *p, float const *n, float *r);
-void extrapolate_line(size_t m, float const *p, float const *n, float *r);
-
-/* plan.c */
-void hvaultGetRelSize(PlannerInfo *root, 
-                      RelOptInfo *baserel, 
-                      Oid foreigntableid);
-void hvaultGetPaths(PlannerInfo *root, 
-                    RelOptInfo *baserel,
-                    Oid foreigntableid);
-ForeignScan *hvaultGetPlan(PlannerInfo *root, 
-                           RelOptInfo *baserel,
-                           Oid foreigntableid, 
-                           ForeignPath *best_path,
-                           List *tlist, 
-                           List *scan_clauses);
-
-/* utils.c */
-DefElem *hvaultGetTableOption(Oid foreigntableid, char *option);
-HvaultColumnType *hvaultGetUsedColumns(PlannerInfo *root, 
-                                       RelOptInfo *baserel, 
-                                       Oid foreigntableid,
-                                       AttrNumber natts);
-List *hvaultGetAllColumns(Relation relation);
-double hvaultGetNumFiles(char const *catalog);
-
-static inline char * 
-hvaultGetTableOptionString(Oid foreigntableid, char *option)
-{
-    return defGetString(hvaultGetTableOption(foreigntableid, option));
-}
-
-static inline bool 
-hvaultGetTableOptionBool(Oid foreigntableid, char *option)
-{
-    return defGetBoolean(hvaultGetTableOption(foreigntableid, option));
-}
-
-
-/* predicate.c */
-int hvaultGeomPredicate(HvaultColumnType coltype,
-                        HvaultGeomOperator op,
-                        bool neg,
-                        HvaultExecState const *scan,
-                        GBOX const * arg,
-                        int n,
-                        size_t const *sel,
-                        size_t *res);
-
-extern char * geomopstr[HvaultGeomNumAllOpers];
-
-
-#endif /* _HVAULT_H_ */
+#endif /* _EXECUTE_H_ */

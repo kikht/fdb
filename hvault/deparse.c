@@ -1,16 +1,6 @@
 #include "deparse.h"
 #include "utils.h"
 
-#include <access/htup.h>
-#include <catalog/pg_namespace.h>
-#include <catalog/pg_operator.h>
-#include <catalog/pg_proc.h>
-#include <catalog/pg_type.h>
-#include <nodes/nodeFuncs.h>
-#include <utils/builtins.h>
-#include <utils/lsyscache.h>
-#include <utils/syscache.h>
-
 /* 
  * Deparse expression as runtime computable parameter. 
  * Parameter index directly maps to fdw_expr.
@@ -78,7 +68,7 @@ deparseFuncExpr(FuncExpr *node, HvaultDeparseContext *ctx)
      */
     if (node->funcformat == COERCE_IMPLICIT_CAST)
     {
-        deparseExpr((Expr *) linitial(node->args), ctx);
+        hvaultDeparseSimple((Expr *) linitial(node->args), ctx);
         return;
     }
 
@@ -94,7 +84,7 @@ deparseFuncExpr(FuncExpr *node, HvaultDeparseContext *ctx)
         /* Get the typmod if this is a length-coercion function */
         (void) exprIsLengthCoercion((Node *) node, &coercedTypmod);
 
-        deparseExpr((Expr *) linitial(node->args), ctx);
+        hvaultDeparseSimple((Expr *) linitial(node->args), ctx);
         appendStringInfo(&ctx->query, "::%s",
                          format_type_with_typemod(rettype, coercedTypmod));
         return;
@@ -135,7 +125,7 @@ deparseFuncExpr(FuncExpr *node, HvaultDeparseContext *ctx)
     {
         if (!first)
             appendStringInfoString(&ctx->query, ", ");
-        deparseExpr((Expr *) lfirst(arg), ctx);
+        hvaultDeparseSimple((Expr *) lfirst(arg), ctx);
         first = false;
     }
     appendStringInfoChar(&ctx->query, ')');
@@ -194,7 +184,7 @@ deparseOpExpr(OpExpr *node, HvaultDeparseContext *ctx)
     if (oprkind == 'r' || oprkind == 'b')
     {
         arg = list_head(node->args);
-        deparseExpr(lfirst(arg), ctx);
+        hvaultDeparseSimple(lfirst(arg), ctx);
         appendStringInfoChar(&ctx->query, ' ');
     }
 
@@ -206,7 +196,7 @@ deparseOpExpr(OpExpr *node, HvaultDeparseContext *ctx)
     {
         arg = list_tail(node->args);
         appendStringInfoChar(&ctx->query, ' ');
-        deparseExpr(lfirst(arg), ctx);
+        hvaultDeparseSimple(lfirst(arg), ctx);
     }
 
     appendStringInfoChar(&ctx->query, ')');
@@ -220,9 +210,9 @@ deparseDistinctExpr(DistinctExpr *node, HvaultDeparseContext *ctx)
     Assert(list_length(node->args) == 2);
 
     appendStringInfoChar(&ctx->query, '(');
-    deparseExpr(linitial(node->args), ctx);
+    hvaultDeparseSimple(linitial(node->args), ctx);
     appendStringInfo(&ctx->query, " IS DISTINCT FROM ");
-    deparseExpr(lsecond(node->args), ctx);
+    hvaultDeparseSimple(lsecond(node->args), ctx);
     appendStringInfoChar(&ctx->query, ')');
 }
 
@@ -239,7 +229,7 @@ deparseArrayRef(ArrayRef *node, HvaultDeparseContext *ctx)
      * Deparse and parenthesize referenced array expression first. 
      */
     appendStringInfoChar(&ctx->query, '(');
-    deparseExpr(node->refexpr, ctx);
+    hvaultDeparseSimple(node->refexpr, ctx);
     appendStringInfoChar(&ctx->query, ')');
      
 
@@ -250,11 +240,11 @@ deparseArrayRef(ArrayRef *node, HvaultDeparseContext *ctx)
         appendStringInfoChar(&ctx->query, '[');
         if (lowlist_item)
         {
-            deparseExpr(lfirst(lowlist_item), ctx);
+            hvaultDeparseSimple(lfirst(lowlist_item), ctx);
             appendStringInfoChar(&ctx->query, ':');
             lowlist_item = lnext(lowlist_item);
         }
-        deparseExpr(lfirst(uplist_item), ctx);
+        hvaultDeparseSimple(lfirst(uplist_item), ctx);
         appendStringInfoChar(&ctx->query, ']');
     }
 
@@ -283,13 +273,13 @@ deparseScalarArrayOpExpr(ScalarArrayOpExpr *node, HvaultDeparseContext *ctx)
     appendStringInfoChar(&ctx->query, '(');
 
     /* Deparse left operand. */
-    deparseExpr(linitial(node->args), ctx);
+    hvaultDeparseSimple(linitial(node->args), ctx);
     appendStringInfoChar(&ctx->query, ' ');
     /* Deparse operator name plus decoration. */
     deparseOperatorName(&ctx->query, form);
     appendStringInfo(&ctx->query, " %s (", node->useOr ? "ANY" : "ALL");
     /* Deparse right operand. */
-    deparseExpr(lsecond(node->args), ctx);
+    hvaultDeparseSimple(lsecond(node->args), ctx);
     appendStringInfoChar(&ctx->query, ')');
 
     /* Always parenthesize the expression. */
@@ -309,7 +299,7 @@ deparseArrayExpr(ArrayExpr *node, HvaultDeparseContext *ctx)
     {
         if (!first)
             appendStringInfo(&ctx->query, ", ");
-        deparseExpr(lfirst(l), ctx);
+        hvaultDeparseSimple(lfirst(l), ctx);
         first = false;
     }
     appendStringInfoChar(&ctx->query, ']');
@@ -323,7 +313,7 @@ deparseArrayExpr(ArrayExpr *node, HvaultDeparseContext *ctx)
 static void
 deparseRelabelType(RelabelType *node, HvaultDeparseContext *ctx)
 {
-    deparseExpr(node->arg, ctx);
+    hvaultDeparseSimple(node->arg, ctx);
     if (node->relabelformat != COERCE_IMPLICIT_CAST)
         appendStringInfo(&ctx->query, "::%s",
                          format_type_with_typemod(node->resulttype,
@@ -347,7 +337,7 @@ deparseBoolExpr(BoolExpr *node, HvaultDeparseContext *ctx)
             break;
         case NOT_EXPR:
             appendStringInfo(&ctx->query, "(NOT ");
-            deparseExpr(linitial(node->args), ctx);
+            hvaultDeparseSimple(linitial(node->args), ctx);
             appendStringInfoChar(&ctx->query, ')');
             return;
         default:
@@ -360,7 +350,7 @@ deparseBoolExpr(BoolExpr *node, HvaultDeparseContext *ctx)
     {
         if (!first)
             appendStringInfo(&ctx->query, " %s ", op);
-        deparseExpr((Expr *) lfirst(l), ctx);
+        hvaultDeparseSimple((Expr *) lfirst(l), ctx);
         first = false;
     }
     appendStringInfoChar(&ctx->query, ')');
@@ -370,7 +360,7 @@ static void
 deparseNullTest(NullTest *node, HvaultDeparseContext *ctx)
 {
     appendStringInfoChar(&ctx->query, '(');
-    deparseExpr(node->arg, ctx);
+    hvaultDeparseSimple(node->arg, ctx);
     if (node->nulltesttype == IS_NULL)
         appendStringInfo(&ctx->query, " IS NULL)");
     else
@@ -446,7 +436,7 @@ deparseConstant(Const *node, HvaultDeparseContext *ctx)
 }
 
 void
-deparseExpr(Expr *node, HvaultDeparseContext *ctx)
+hvaultDeparseSimple(Expr *node, HvaultDeparseContext *ctx)
 {
     if (node == NULL)
         return;
@@ -494,3 +484,56 @@ deparseExpr(Expr *node, HvaultDeparseContext *ctx)
             break;
     }
 }
+
+void hvaultDeparseFootprint (HvaultGeomOperator     op, 
+                             bool                   isneg, 
+                             Expr *                 arg, 
+                             HvaultDeparseContext * ctx)
+{
+    Assert(op != HvaultGeomInvalidOp);
+
+    if (isneg)
+        appendStringInfoString(&ctx->query, "NOT ");
+    
+    appendStringInfoChar(&ctx->query, '(');
+    if (op < HvaultGeomNumRealOpers) 
+    {
+        appendStringInfoString(&ctx->query, "footprint ");
+        appendStringInfoString(&ctx->query, hvaultGeomopstr[op]);
+        appendStringInfoChar(&ctx->query, ' ');
+        hvaultDeparseSimple(arg, ctx);
+    }
+    else
+    {
+        hvaultDeparseSimple(arg, ctx);
+        appendStringInfoChar(&ctx->query, ' ');
+        appendStringInfoString(&ctx->query, hvaultGeomopstr[op]);
+        appendStringInfoString(&ctx->query, " footprint");
+    }
+    appendStringInfoChar(&ctx->query, ')');
+}
+
+/* Initializes HvaultDeparseContext struct (with previously undefined contents)
+ * to describe empty qual list.
+ */
+void 
+hvaultDeparseContextInit (HvaultDeparseContext  * ctx, 
+                          HvaultTableInfo const * table)
+{
+    ctx->fdw_expr = NIL;
+    initStringInfo(&ctx->query);
+    ctx->table = table;
+}
+
+/* Frees all resources allocated by context. It's up to caller to pfree 
+ * the struct itself (so it is possible to allocate struct on stack)
+ */
+void 
+hvaultDeparseContextFree (HvaultDeparseContext * ctx)
+{
+    list_free(ctx->fdw_expr);
+    ctx->table = NULL;
+    pfree(ctx->query.data);
+}
+
+

@@ -1,16 +1,125 @@
+#include "analyze.h"
+#include "utils.h"
+#include "deparse.h"
+
+char const * hvaultGeomopstr[HvaultGeomNumAllOpers] = {
+    /* HvaultGeomOverlaps  -> */ "&&",
+    /* HvaultGeomContains  -> */ "~",
+    /* HvaultGeomWithin    -> */ "@",
+    /* HvaultGeomSame      -> */ "~=",
+    /* HvaultGeomOverleft  -> */ "&<",
+    /* HvaultGeomOverright -> */ "&>",
+    /* HvaultGeomOverabove -> */ "|&>",
+    /* HvaultGeomOverbelow -> */ "&<|",
+    /* HvaultGeomLeft      -> */ "<<",
+    /* HvaultGeomRight     -> */ ">>",
+    /* HvaultGeomAbove     -> */ "|>>",
+    /* HvaultGeomBelow     -> */ "<<|",
+    /* HvaultGeomCommLeft  -> */ "&<",
+    /* HvaultGeomCommRight -> */ "&>",
+    /* HvaultGeomCommAbove -> */ "|&>",
+    /* HvaultGeomCommBelow -> */ "&<|",
+};
+
+static HvaultGeomOperator geomopcomm[HvaultGeomNumAllOpers] = 
+{
+    /* HvaultGeomOverlaps  -> */ HvaultGeomOverlaps,
+    /* HvaultGeomContains  -> */ HvaultGeomWithin,
+    /* HvaultGeomWithin    -> */ HvaultGeomContains,
+    /* HvaultGeomSame      -> */ HvaultGeomSame,
+    /* HvaultGeomOverleft  -> */ HvaultGeomCommLeft,
+    /* HvaultGeomOverright -> */ HvaultGeomCommRight,
+    /* HvaultGeomOverabove -> */ HvaultGeomCommAbove,
+    /* HvaultGeomOverbelow -> */ HvaultGeomCommBelow,
+    /* HvaultGeomLeft      -> */ HvaultGeomRight,
+    /* HvaultGeomRight     -> */ HvaultGeomLeft,
+    /* HvaultGeomAbove     -> */ HvaultGeomBelow,
+    /* HvaultGeomBelow     -> */ HvaultGeomAbove,
+    /* HvaultGeomCommLeft  -> */ HvaultGeomOverleft,
+    /* HvaultGeomCommRight -> */ HvaultGeomOverright,
+    /* HvaultGeomCommAbove -> */ HvaultGeomOverabove,
+    /* HvaultGeomCommBelow -> */ HvaultGeomOverbelow,
+};
+
+typedef struct {
+    HvaultGeomOperator op;
+    bool isneg;
+} GeomPredicateDesc;
+
+static GeomPredicateDesc geomopmap[2*HvaultGeomNumAllOpers] = 
+{
+    /* HvaultGeomOverlaps  -> */ { HvaultGeomOverlaps,  false },
+    /* HvaultGeomContains  -> */ { HvaultGeomContains,  false },
+    /* HvaultGeomWithin    -> */ { HvaultGeomOverlaps,  false },
+    /* HvaultGeomSame      -> */ { HvaultGeomContains,  false },
+    /* HvaultGeomOverleft  -> */ { HvaultGeomRight,     true  },
+    /* HvaultGeomOverright -> */ { HvaultGeomLeft,      true  },
+    /* HvaultGeomOverabove -> */ { HvaultGeomBelow,     true  },
+    /* HvaultGeomOverbelow -> */ { HvaultGeomAbove,     true  },
+    /* HvaultGeomLeft      -> */ { HvaultGeomOverright, true  },
+    /* HvaultGeomRight     -> */ { HvaultGeomOverleft,  true  },
+    /* HvaultGeomAbove     -> */ { HvaultGeomOverbelow, true  },
+    /* HvaultGeomBelow     -> */ { HvaultGeomOverabove, true  },
+    /* HvaultGeomCommLeft  -> */ { HvaultGeomCommLeft,  false },
+    /* HvaultGeomCommRight -> */ { HvaultGeomCommRight, false },
+    /* HvaultGeomCommAbove -> */ { HvaultGeomCommAbove, false },
+    /* HvaultGeomCommBelow -> */ { HvaultGeomCommBelow, false },
+
+    /* Negative predicate map */
+
+    /* HvaultGeomOverlaps  -> */ { HvaultGeomWithin,    true  },
+    /* HvaultGeomContains  -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomWithin    -> */ { HvaultGeomWithin,    true  },
+    /* HvaultGeomSame      -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomOverleft  -> */ { HvaultGeomOverleft,  true  },
+    /* HvaultGeomOverright -> */ { HvaultGeomOverright, true  },
+    /* HvaultGeomOverabove -> */ { HvaultGeomOverabove, true  },
+    /* HvaultGeomOverbelow -> */ { HvaultGeomOverbelow, true  },
+    /* HvaultGeomLeft      -> */ { HvaultGeomLeft,      true  },
+    /* HvaultGeomRight     -> */ { HvaultGeomRight,     true  },
+    /* HvaultGeomAbove     -> */ { HvaultGeomAbove,     true  },
+    /* HvaultGeomBelow     -> */ { HvaultGeomBelow,     true  },
+    /* HvaultGeomCommLeft  -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomCommRight -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomCommAbove -> */ { HvaultGeomInvalidOp, false },
+    /* HvaultGeomCommBelow -> */ { HvaultGeomInvalidOp, false },
+};
+
+static inline GeomPredicateDesc
+mapGeomPredicate(GeomPredicateDesc const p)
+{
+    size_t idx = p.op;
+    if (p.isneg)
+        idx += HvaultGeomNumAllOpers;
+    return geomopmap[idx];
+}
+
+struct HvaultQualAnalyzerData {
+    HvaultTableInfo const * table;
+    Oid geomopers[HvaultGeomNumRealOpers];
+};
+
+struct HvaultQualSimpleData {
+    HvaultQual qual;
+};
+
+struct HvaultQualGeomData {
+    HvaultQual qual;
+    Var *var;
+    Expr *arg;
+    HvaultColumnType coltype;
+    GeomPredicateDesc pred;
+    GeomPredicateDesc catalog_pred;
+};
+
 static inline bool 
-isCatalogVar(HvaultColumnType type)
+isCatalogVar (HvaultColumnType type)
 {
     return type == HvaultColumnFileIdx || type == HvaultColumnTime;
 }
 
-typedef struct
-{
-    HvaultTableInfo const table;
-} CatalogQualsContext;
-
 static bool 
-isCatalogQualWalker(Node *node, CatalogQualsContext *ctx)
+isCatalogQualWalker (Node *node, HvaultTableInfo const *ctx)
 {
     if (node == NULL)
         return false;
@@ -26,9 +135,9 @@ isCatalogQualWalker(Node *node, CatalogQualsContext *ctx)
                  * with join conditions.
                  */
                 Var *var = (Var *) node;
-                if (var->varno == ctx->table.relid)
+                if (var->varno == ctx->relid)
                 {
-                    if (!isCatalogVar(ctx->table.coltypes[var->varattno-1]))
+                    if (!isCatalogVar(ctx->coltypes[var->varattno-1]))
                         return true;
                 }
             }
@@ -59,11 +168,10 @@ isCatalogQualWalker(Node *node, CatalogQualsContext *ctx)
     return expression_tree_walker(node, isCatalogQualWalker, (void *) ctx);
 }
 
-/* Little trick to ensure that table info is const */
 static inline bool 
-isCatalogQual(Expr *expr, HvaultTableInfo const *table)
+isCatalogQual (Expr *expr, HvaultTableInfo const *table)
 {
-    return !isCatalogQualWalker((Node *) expr, (CatalogQualsContext *) table);
+    return !isCatalogQualWalker((Node *) expr, (void *) table);
 }
 
 /* Catalog only EC will be put into baserestrictinfo by planner, so here
@@ -71,7 +179,7 @@ isCatalogQual(Expr *expr, HvaultTableInfo const *table)
  * We skip patalogic case when one EC contains two different catalog vars
  */
 static Var *
-isCatalogJoinEC(EquivalenceClass *ec, HvaultTableInfo const *table)
+isCatalogJoinEC (EquivalenceClass *ec, HvaultTableInfo const *table)
 {
     ListCell *l;
     Var *catalog_var = NULL;
@@ -116,100 +224,8 @@ isCatalogJoinEC(EquivalenceClass *ec, HvaultTableInfo const *table)
     return num_outer_vars > 0 && catalog_var ? catalog_var : NULL;
 }
 
-/* -----------------------------------
- *
- * Footprint expression functions
- *
- * -----------------------------------
- */
-
-char * geomopstr[HvaultGeomNumAllOpers] = {
-
-    /* HvaultGeomOverlaps  -> */ "&&",
-    /* HvaultGeomContains  -> */ "~",
-    /* HvaultGeomWithin    -> */ "@",
-    /* HvaultGeomSame      -> */ "~=",
-    /* HvaultGeomOverleft  -> */ "&<",
-    /* HvaultGeomOverright -> */ "&>",
-    /* HvaultGeomOverabove -> */ "|&>",
-    /* HvaultGeomOverbelow -> */ "&<|",
-    /* HvaultGeomLeft      -> */ "<<",
-    /* HvaultGeomRight     -> */ ">>",
-    /* HvaultGeomAbove     -> */ "|>>",
-    /* HvaultGeomBelow     -> */ "<<|",
-    /* HvaultGeomCommLeft  -> */ "&<",
-    /* HvaultGeomCommRight -> */ "&>",
-    /* HvaultGeomCommAbove -> */ "|&>",
-    /* HvaultGeomCommBelow -> */ "&<|",
-};
-
-static HvaultGeomOperator geomopcomm[HvaultGeomNumAllOpers] = 
-{
-    /* HvaultGeomOverlaps  -> */ HvaultGeomOverlaps,
-    /* HvaultGeomContains  -> */ HvaultGeomWithin,
-    /* HvaultGeomWithin    -> */ HvaultGeomContains,
-    /* HvaultGeomSame      -> */ HvaultGeomSame,
-    /* HvaultGeomOverleft  -> */ HvaultGeomCommLeft,
-    /* HvaultGeomOverright -> */ HvaultGeomCommRight,
-    /* HvaultGeomOverabove -> */ HvaultGeomCommAbove,
-    /* HvaultGeomOverbelow -> */ HvaultGeomCommBelow,
-    /* HvaultGeomLeft      -> */ HvaultGeomRight,
-    /* HvaultGeomRight     -> */ HvaultGeomLeft,
-    /* HvaultGeomAbove     -> */ HvaultGeomBelow,
-    /* HvaultGeomBelow     -> */ HvaultGeomAbove,
-    /* HvaultGeomCommLeft  -> */ HvaultGeomOverleft,
-    /* HvaultGeomCommRight -> */ HvaultGeomOverright,
-    /* HvaultGeomCommAbove -> */ HvaultGeomOverabove,
-    /* HvaultGeomCommBelow -> */ HvaultGeomOverbelow,
-};
-
-static GeomPredicateDesc geomopmap[2*HvaultGeomNumAllOpers] = 
-{
-    /* HvaultGeomOverlaps  -> */ { HvaultGeomOverlaps,  false },
-    /* HvaultGeomContains  -> */ { HvaultGeomContains,  false },
-    /* HvaultGeomWithin    -> */ { HvaultGeomOverlaps,  false },
-    /* HvaultGeomSame      -> */ { HvaultGeomContains,  false },
-    /* HvaultGeomOverleft  -> */ { HvaultGeomRight,     true  },
-    /* HvaultGeomOverright -> */ { HvaultGeomLeft,      true  },
-    /* HvaultGeomOverabove -> */ { HvaultGeomBelow,     true  },
-    /* HvaultGeomOverbelow -> */ { HvaultGeomAbove,     true  },
-    /* HvaultGeomLeft      -> */ { HvaultGeomOverright, true  },
-    /* HvaultGeomRight     -> */ { HvaultGeomOverleft,  true  },
-    /* HvaultGeomAbove     -> */ { HvaultGeomOverbelow, true  },
-    /* HvaultGeomBelow     -> */ { HvaultGeomOverabove, true  },
-    /* HvaultGeomCommLeft  -> */ { HvaultGeomCommLeft,  false },
-    /* HvaultGeomCommRight -> */ { HvaultGeomCommRight, false },
-    /* HvaultGeomCommAbove -> */ { HvaultGeomCommAbove, false },
-    /* HvaultGeomCommBelow -> */ { HvaultGeomCommBelow, false },
-
-    /* Negative predicate map */
-
-    /* HvaultGeomOverlaps  -> */ { HvaultGeomWithin,    true  },
-    /* HvaultGeomContains  -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomWithin    -> */ { HvaultGeomWithin,    true  },
-    /* HvaultGeomSame      -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomOverleft  -> */ { HvaultGeomOverleft,  true  },
-    /* HvaultGeomOverright -> */ { HvaultGeomOverright, true  },
-    /* HvaultGeomOverabove -> */ { HvaultGeomOverabove, true  },
-    /* HvaultGeomOverbelow -> */ { HvaultGeomOverbelow, true  },
-    /* HvaultGeomLeft      -> */ { HvaultGeomLeft,      true  },
-    /* HvaultGeomRight     -> */ { HvaultGeomRight,     true  },
-    /* HvaultGeomAbove     -> */ { HvaultGeomAbove,     true  },
-    /* HvaultGeomBelow     -> */ { HvaultGeomBelow,     true  },
-    /* HvaultGeomCommLeft  -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomCommRight -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomCommAbove -> */ { HvaultGeomInvalidOp, false },
-    /* HvaultGeomCommBelow -> */ { HvaultGeomInvalidOp, false },
-};
-
-static inline GeomPredicateDesc
-mapGeomPredicate(GeomPredicateDesc const p)
-{
-    return geomopmap[HvaultGeomNumAllOpers * p.isneg + p.op];
-}
-
 static Oid
-getGeometryOpOid(char const *opname, SPIPlanPtr prep_stmt)
+getGeometryOpOid (char const *opname, SPIPlanPtr prep_stmt)
 {
     Datum param[1];
     Datum val;
@@ -237,8 +253,14 @@ getGeometryOpOid(char const *opname, SPIPlanPtr prep_stmt)
     return DatumGetObjectId(val);
 }
 
+#define GEOMETRY_OP_QUERY \
+    "SELECT o.oid from pg_opclass c" \
+        " JOIN pg_amop ao ON c.opcfamily = ao.amopfamily" \
+        " JOIN pg_operator o ON ao.amopopr = o.oid " \
+        " WHERE c.opcname = 'gist_geometry_ops_2d' AND o.oprname = $1"
+
 static void
-getGeometryOpers(HvaultTableInfo *table)
+getGeometryOpers (HvaultQualAnalyzer analyzer)
 {
     SPIPlanPtr prep_stmt;
     Oid argtypes[1];
@@ -262,7 +284,8 @@ getGeometryOpers(HvaultTableInfo *table)
 
     for (i = 0; i < HvaultGeomNumRealOpers; i++)
     {
-        table->geomopers[i] = getGeometryOpOid(geomopstr[i], prep_stmt);
+        analyzer->geomopers[i] = getGeometryOpOid(hvaultGeomopstr[i], 
+                                                  prep_stmt);
     }
     
     if (SPI_finish() != SPI_OK_FINISH)    
@@ -274,20 +297,20 @@ getGeometryOpers(HvaultTableInfo *table)
 }
 
 static inline HvaultGeomOperator
-getGeometryOper(Oid opno, const HvaultTableInfo *table)
+getGeometryOper (HvaultQualAnalyzer analyzer, Oid opno)
 {
     int i;
     for(i = 0; i < HvaultGeomNumRealOpers; ++i)
-        if (table->geomopers[i] == opno) 
+        if (analyzer->geomopers[i] == opno) 
             return i;
     return HvaultGeomInvalidOp;
 }
 
 static bool
-isFootprintOpArgs(Expr *varnode, 
-                  Expr *arg, 
-                  const HvaultTableInfo *table, 
-                  HvaultColumnType *coltype)
+isFootprintOpArgs (Expr *varnode, 
+                   Expr *arg, 
+                   const HvaultTableInfo *table, 
+                   HvaultColumnType *coltype)
 {
     Var *var;
 
@@ -306,9 +329,9 @@ isFootprintOpArgs(Expr *varnode,
 }
 
 static bool
-isFootprintOp(Expr *expr, 
-              const HvaultTableInfo *table, 
-              GeomOpQual *qual)
+isFootprintOp (Expr *expr, 
+               HvaultQualAnalyzer analyzer, 
+               struct HvaultQualGeomData *qual)
 {
     OpExpr *opexpr;
     Expr *first, *second;
@@ -321,18 +344,18 @@ isFootprintOp(Expr *expr,
     if (list_length(opexpr->args) != 2)
         return false;
 
-    qual->pred.op = getGeometryOper(opexpr->opno, table);
+    qual->pred.op = getGeometryOper(analyzer, opexpr->opno);
     if (qual->pred.op == HvaultGeomInvalidOp)
         return false;
 
     first = linitial(opexpr->args);
     second = lsecond(opexpr->args);
-    if (isFootprintOpArgs(first, second, table, &qual->coltype))
+    if (isFootprintOpArgs(first, second, analyzer->table, &qual->coltype))
     {
         qual->var = (Var *) first;
         qual->arg = second;
     }
-    else if (isFootprintOpArgs(second, first, table, &qual->coltype))
+    else if (isFootprintOpArgs(second, first, analyzer->table, &qual->coltype))
     {
         qual->var = (Var *) second;
         qual->arg = first;
@@ -344,7 +367,7 @@ isFootprintOp(Expr *expr,
         return false;
     }
 
-    if (!isCatalogQual(qual->arg, table))
+    if (!isCatalogQual(qual->arg, analyzer->table))
         return false;
 
     
@@ -352,9 +375,9 @@ isFootprintOp(Expr *expr,
 }
 
 static bool 
-isFootprintNegOp(Expr *expr, 
-                 const HvaultTableInfo *table,
-                 GeomOpQual *qual)
+isFootprintNegOp (Expr *expr, 
+                  HvaultQualAnalyzer analyzer, 
+                  struct HvaultQualGeomData *qual)
 {
     BoolExpr *boolexpr;
 
@@ -369,23 +392,25 @@ isFootprintNegOp(Expr *expr,
     if (list_length(boolexpr->args) != 1)
         return false;
 
-    if (!isFootprintOp(linitial(boolexpr->args), table, qual))
+    if (!isFootprintOp(linitial(boolexpr->args), analyzer, qual))
         return false;
 
     return true;
 }
 
 static bool
-isFootprintQual(Expr *expr, const HvaultTableInfo *table, GeomOpQual *qual)
+isFootprintQual (Expr *expr, 
+                 HvaultQualAnalyzer analyzer, 
+                 struct HvaultQualGeomData *qual)
 {
     bool res = false;
-    if (isFootprintOp(expr, table, qual)) 
+    if (isFootprintOp(expr, analyzer, qual)) 
     {
         qual->pred.isneg = false;
         res = true;
     }
 
-    if (isFootprintNegOp(expr, table, qual)) 
+    if (isFootprintNegOp(expr, analyzer, qual)) 
     {
         qual->pred.isneg = true;
         res = true;
@@ -402,29 +427,130 @@ isFootprintQual(Expr *expr, const HvaultTableInfo *table, GeomOpQual *qual)
     }
 }
 
-static void
-deparseFootprintExpr(GeomOpQual *qual, HvaultDeparseContext *ctx)
+/* Initialize analyzer. Reads geometry oper oids */
+HvaultQualAnalyzer 
+hvaultAnalyzerInit (HvaultTableInfo const * table)
 {
-    Assert(qual->catalog_pred.op != HvaultGeomInvalidOp);
-
-    if (qual->catalog_pred.isneg)
-        appendStringInfoString(&ctx->query, "NOT ");
-    
-    appendStringInfoChar(&ctx->query, '(');
-    if (qual->catalog_pred.op < HvaultGeomNumRealOpers) 
-    {
-        appendStringInfoString(&ctx->query, "footprint ");
-        appendStringInfoString(&ctx->query, geomopstr[qual->catalog_pred.op]);
-        appendStringInfoChar(&ctx->query, ' ');
-        deparseExpr(qual->arg, ctx);
-    }
-    else
-    {
-        deparseExpr(qual->arg, ctx);  
-        appendStringInfoChar(&ctx->query, ' ');
-        appendStringInfoString(&ctx->query, geomopstr[qual->catalog_pred.op]);
-        appendStringInfoString(&ctx->query, " footprint");
-    }
-    appendStringInfoChar(&ctx->query, ')');
+    HvaultQualAnalyzer analyzer = palloc(sizeof(struct HvaultQualAnalyzerData));
+    analyzer->table = table;
+    getGeometryOpers(analyzer);
+    return analyzer;
 }
 
+/* Free analyer resources */
+void 
+hvaultAnalyzerFree (HvaultQualAnalyzer analyzer)
+{
+    pfree(analyzer);
+}
+
+/* Process list of restrict infos and 
+   return list of interesting HvaultQuals */
+List * 
+hvaultAnalyzeQuals (HvaultQualAnalyzer analyzer, List * quals)
+{
+    List * res = NIL;
+    ListCell *l;
+
+    foreach(l, quals)
+    {
+        RestrictInfo *rinfo = lfirst(l);
+        struct HvaultQualGeomData geom_qual_data;
+        if (isCatalogQual(rinfo->clause, analyzer->table))
+        {
+            struct HvaultQualSimpleData * qual_data = NULL;
+            
+            elog(DEBUG2, "Detected catalog qual %s", 
+                 nodeToString(rinfo->clause));
+            
+            qual_data = palloc(sizeof(struct HvaultQualSimpleData));
+            qual_data->qual.type = HvaultQualSimple;
+            qual_data->qual.rinfo = rinfo;
+
+            res = lappend(res, qual_data);
+        } 
+        else if (isFootprintQual(rinfo->clause, analyzer, &geom_qual_data))
+        {
+            struct HvaultQualGeomData * qual_data = NULL;
+            
+            elog(DEBUG2, "Detected footprint qual %s", 
+                 nodeToString(rinfo->clause));
+            
+            qual_data = palloc(sizeof(struct HvaultQualGeomData));
+            memcpy(qual_data, &geom_qual_data, 
+                   sizeof(struct HvaultQualGeomData));
+            qual_data->qual.type = HvaultQualGeom;
+            qual_data->qual.rinfo = rinfo;
+
+            res = lappend(res, qual_data);
+        }
+    }
+    return res;
+}
+
+/* Process list of equivalence classes and 
+   return list of interesting HvaultECs */
+List * 
+hvaultAnalyzeECs (HvaultQualAnalyzer analyzer, List * ecs)
+{
+    List *res = NIL;
+    ListCell *l;
+
+    foreach(l, ecs)
+    {
+        EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
+        Var *catalog_var = isCatalogJoinEC(ec, analyzer->table);
+        if (catalog_var != NULL)
+        {
+            HvaultEC * ec_data = palloc(sizeof(HvaultEC));
+            ec_data->ec = ec;
+            ec_data->var = catalog_var;
+
+            res = lappend(res, ec_data);
+        }
+    }
+    return res;
+}
+
+/* Create predicate data represented as List from qual if possible
+   Returns NIL if predicate is not available for this qual */
+List * 
+hvaultCreatePredicate (HvaultQual * qual, List ** fdw_expr)
+{
+    struct HvaultQualGeomData * geom_qual = NULL;
+    int argno;
+
+    if (qual->type != HvaultQualGeom)
+        return NIL;
+
+    geom_qual = (struct HvaultQualGeomData *) qual;
+    argno = list_append_unique_pos(fdw_expr, geom_qual->arg);
+    return list_make4_int(geom_qual->coltype, geom_qual->pred.op, argno, 
+                          geom_qual->pred.isneg);
+}
+
+void 
+hvaultDeparseQual (HvaultQual * qual, HvaultDeparseContext * ctx)
+{
+    switch (qual->type) 
+    {
+        case HvaultQualSimple:
+        {
+            hvaultDeparseSimple(qual->rinfo->clause, ctx);
+        }
+        break;
+        case HvaultQualGeom:
+        {
+            struct HvaultQualGeomData * qual_data = 
+                (struct HvaultQualGeomData *) qual;
+            hvaultDeparseFootprint(qual_data->catalog_pred.op, 
+                                   qual_data->catalog_pred.isneg, 
+                                   qual_data->arg, 
+                                   ctx);
+        }
+        break;
+        default:
+            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                    errmsg("undefined HvaultQual type")));
+    }
+}
