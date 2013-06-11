@@ -15,10 +15,10 @@ HEADERS = analyze.h catalog.h common.h deparse.h execute.h hdf.h interpolate.h \
           options.h utils.h
 
 hvault.so: $(OBJ)
-	gcc $(CFLAGS) -shared -Wl,-soname,$@ -o $@ $^ $(LIB)
+	$(CC) $(CFLAGS) -shared -Wl,-soname,$@ -o $@ $^ $(LIB)
 
 %.o: %.c $(HEADERS)
-	gcc $(CFLAGS) $(INC) -o $@ -c $<
+	$(CC) $(CFLAGS) $(INC) -o $@ -c $<
 
 clean:
 	rm -rf *.o *.so
