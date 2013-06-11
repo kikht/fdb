@@ -1,12 +1,17 @@
 #include "catalog.h"
 #include "deparse.h"
 
+struct NameHash {
+    char const * key;
+    UT_hash_handle hh;
+};
+
 struct HvaultCatalogQueryData
 {
     HvaultDeparseContext deparse;
-    StringInfoData products;
     char const * sort_qual;
     size_t limit_qual;
+    struct NameHash * prods;
 };
 
 #define NO_LIMIT ((size_t)(-1))
@@ -20,10 +25,10 @@ HvaultCatalogQuery
 hvaultCatalogInitQuery (HvaultTableInfo const * table)
 {
     HvaultCatalogQuery query = palloc(sizeof(struct HvaultCatalogQueryData));
-    initStringInfo(&query->products);
     hvaultDeparseContextInit(&query->deparse, table);
     query->sort_qual = NULL;
     query->limit_qual = NO_LIMIT;
+    query->prods = NULL;
     return query;
 }
 
@@ -31,10 +36,16 @@ hvaultCatalogInitQuery (HvaultTableInfo const * table)
 HvaultCatalogQuery 
 hvaultCatalogCloneQuery (HvaultCatalogQuery query)
 {
+    struct NameHash *p, *s;
     HvaultCatalogQuery res = hvaultCatalogInitQuery(query->deparse.table);
     res->deparse.fdw_expr = list_copy(query->deparse.fdw_expr);
     appendStringInfoString(&res->deparse.query, query->deparse.query.data);
-    appendStringInfoString(&res->products, query->products.data);
+    for (p = query->prods; p != NULL; p = p->hh.next) 
+    {
+        s = palloc(sizeof(struct NameHash));
+        s->key = p->key;
+        HASH_ADD_KEYPTR(hh, res->prods, s->key, strlen(s->key), s);
+    }
     if (query->sort_qual != NULL)
         res->sort_qual = pstrdup(query->sort_qual);
     res->limit_qual = query->limit_qual;
@@ -49,18 +60,21 @@ hvaultCatalogFreeQuery (HvaultCatalogQuery query)
     if (query->sort_qual != NULL)
         pfree((void *) query->sort_qual);
 
-    pfree(query->products.data);
+    HASH_CLEAR(hh, query->prods);
 }
 
 /* Add required product to query */
 void 
 hvaultCatalogAddProduct (HvaultCatalogQuery query, char const * name)
 {
-    if (query->products.len != 0) 
+    struct NameHash * s;
+    HASH_FIND_STR(query->prods, name, s);
+    if (!s)
     {
-        appendStringInfoString(&query->products, ", ");
+        s = palloc(sizeof(struct NameHash));
+        s->key = name;
+        HASH_ADD_KEYPTR(hh, query->prods, s->key, strlen(s->key), s);
     }
-    appendStringInfoString(&query->products, name);
 }
 
 /* Add catalog qual to query */
@@ -99,9 +113,17 @@ hvaultCatalogGetParams (HvaultCatalogQuery query)
 
 static void buildQueryString (HvaultCatalogQuery query, StringInfo query_str)
 {
-    appendStringInfoString(query_str, "SELECT file_id, starttime, stoptime, ");
-    Assert(query->products.len != 0);
-    appendStringInfoString(query_str, query->products.data);
+    struct NameHash *p;
+    appendStringInfoString(query_str, "SELECT file_id, starttime, stoptime");
+
+    Assert(HASH_COUNT(query->prods) > 0);
+    Assert(query->prods != NULL);
+    for (p = query->prods; p != NULL; p = p->hh.next) 
+    {
+        appendStringInfoString(query_str, ", ");
+        appendStringInfoString(query_str, p->key);
+    }
+
     appendStringInfoString(query_str, " FROM ");
     appendStringInfoString(query_str, 
                            quote_identifier(query->deparse.table->catalog));
@@ -196,9 +218,13 @@ struct HvaultCatalogCursorData
     SPIPlanPtr    prep_stmt;
     int           nargs;
     char const *  name;
+
     MemoryContext memctx;
-    TupleDesc     tupdesc;
-    HeapTuple     tuple;
+    int32_t       file_id;
+    Timestamp     start, stop;
+    HvaultHash *  prod_names;
+    // TupleDesc     tupdesc;
+    // HeapTuple     tuple;
 };
 
 /* Creates new catalog cursor and initializes it with packed query */
@@ -213,8 +239,7 @@ hvaultCatalogInitCursor (List * packed_query, MemoryContext memctx)
     cursor->nargs = intVal(lsecond(packed_query));
     cursor->prep_stmt = NULL;
     cursor->name = NULL;
-    cursor->tupdesc = NULL;
-    cursor->tuple = NULL;
+    cursor->prod_names = NULL;
     cursor->memctx = AllocSetContextCreate(memctx,
                                            "hvault_fdw catalog cursor data",
                                            ALLOCSET_SMALL_MINSIZE,
@@ -227,16 +252,8 @@ hvaultCatalogInitCursor (List * packed_query, MemoryContext memctx)
 void 
 hvaultCatalogFreeCursor (HvaultCatalogCursor cursor)
 {
-    if (cursor->tupdesc != NULL)
-    {
-        FreeTupleDesc(cursor->tupdesc);
-        cursor->tupdesc = NULL;
-    }
-    if (cursor->tuple) 
-    {
-        heap_freetuple(cursor->tuple);
-        cursor->tuple = NULL;
-    }
+    HASH_CLEAR(hh, cursor->prod_names);
+
     if (cursor->memctx != NULL) 
     {
         MemoryContextDelete(cursor->memctx);
@@ -285,6 +302,9 @@ static HvaultCatalogCursorResult
 fetchTuple (HvaultCatalogCursor cursor, Portal file_cursor)
 {
     MemoryContext oldmemctx = NULL;
+    int i;
+    Datum val;
+    bool isnull = true;
 
     Assert(file_cursor);
     SPI_cursor_fetch(file_cursor, true, 1);
@@ -294,39 +314,72 @@ fetchTuple (HvaultCatalogCursor cursor, Portal file_cursor)
         elog(DEBUG1, "No more files");
         return HvaultCatalogCursorEOF;
     }   
-    
-    if (cursor->tupdesc == NULL) 
+    if (SPI_tuptable->tupdesc->natts < 4 ||
+        SPI_tuptable->tupdesc->attrs[0]->atttypid != INT4OID ||
+        SPI_tuptable->tupdesc->attrs[1]->atttypid != TIMESTAMPOID ||
+        SPI_tuptable->tupdesc->attrs[2]->atttypid != TIMESTAMPOID)
     {
-        int i;
-
-        if (SPI_tuptable->tupdesc->natts < 4 ||
-            SPI_tuptable->tupdesc->attrs[0]->atttypid != INT4OID ||
-            SPI_tuptable->tupdesc->attrs[1]->atttypid != TIMESTAMPOID ||
-            SPI_tuptable->tupdesc->attrs[2]->atttypid != TIMESTAMPOID)
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Error in catalog query (header)")));
+        return HvaultCatalogCursorError; /* Will never reach this */         
+    }
+    for (i = 3; i < SPI_tuptable->tupdesc->natts; i++)
+    {
+        if (SPI_tuptable->tupdesc->attrs[i]->atttypid != TEXTOID)
         {
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Error in catalog query (header)")));
-            return HvaultCatalogCursorError; /* Will never reach this */         
+                        errmsg("Error in catalog query (products)")));
+            return HvaultCatalogCursorError; /* Will never reach this */                
         }
-        for (i = 3; i < SPI_tuptable->tupdesc->natts; i++)
-        {
-            if (SPI_tuptable->tupdesc->attrs[i]->atttypid != TEXTOID)
-            {
-                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Error in catalog query (products)")));
-                return HvaultCatalogCursorError; /* Will never reach this */                
-            }
-        }
-
-        oldmemctx = MemoryContextSwitchTo(cursor->memctx);
-        cursor->tupdesc = CreateTupleDescCopy(SPI_tuptable->tupdesc);
-        MemoryContextSwitchTo(oldmemctx);
     }
+    
+    /* Read file_id */
+    val = heap_getattr(SPI_tuptable->vals[0], 1, SPI_tuptable->tupdesc, 
+                       &isnull);
+    if (!isnull)
+    {
+        cursor->file_id = DatumGetInt32(val);
+    }
+    else
+    {
+        elog(WARNING, "Wrong entry in catalog, null file_id");
+        cursor->file_id = 0;
+    }
+    /* Read starttime */
+    val = heap_getattr(SPI_tuptable->vals[0], 2, SPI_tuptable->tupdesc, 
+                       &isnull);
+    cursor->start = isnull ? 0 : DatumGetTimestamp(val);
+    /* Read stoptime */
+    val = heap_getattr(SPI_tuptable->vals[0], 3, SPI_tuptable->tupdesc, 
+                       &isnull);
+    cursor->stop = isnull ? 0 : DatumGetTimestamp(val);
 
+    /* Read product filenames */
     oldmemctx = MemoryContextSwitchTo(cursor->memctx);
-    if (cursor->tuple)
-        heap_freetuple(cursor->tuple);
-    cursor->tuple = heap_copytuple(SPI_tuptable->vals[0]);
+    for (i = 3; i < SPI_tuptable->tupdesc->natts; i++)
+    {
+        char * name = NULL;
+        char * value = NULL;
+        HvaultHash * s = NULL;
+
+        name = SPI_fname(SPI_tuptable->tupdesc, i+1);
+        value = SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, i+1);
+        Assert(name);
+
+        HASH_FIND_STR(cursor->prod_names, name, s);
+        if (s) 
+        {
+            pfree(s->value);
+            s->value = value;
+        }
+        else 
+        {
+            s = palloc(sizeof(HvaultHash));
+            s->key = name;
+            s->value = value;
+            HASH_ADD_KEYPTR(hh, cursor->prod_names, s->key, strlen(s->key), s);
+        }
+    }
     MemoryContextSwitchTo(oldmemctx);
 
     return HvaultCatalogCursorOK;
@@ -383,12 +436,6 @@ hvaultCatalogStartCursor (HvaultCatalogCursor cursor,
 void 
 hvaultCatlogResetCursor (HvaultCatalogCursor cursor)
 {
-    if (cursor->tuple) 
-    {
-        heap_freetuple(cursor->tuple);
-        cursor->tuple = NULL;
-    }
-
     if (SPI_connect() != SPI_OK_CONNECT)
     {
         ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
@@ -447,53 +494,28 @@ hvaultCatalogNext (HvaultCatalogCursor cursor)
 int 
 hvaultCatalogGetId (HvaultCatalogCursor cursor)
 {
-    Datum val;
-    bool isnull;
-    val = heap_getattr(cursor->tuple, 1, cursor->tupdesc, &isnull);
-    if (!isnull)
-    {
-        return DatumGetInt32(val);
-    }
-    else
-    {
-        elog(WARNING, "Wrong entry in catalog, null file_id");
-        return 0;
-    }
+    return cursor->file_id;
 }
 
 /* Get current records's start time */
 Timestamp 
 hvaultCatalogGetStarttime (HvaultCatalogCursor cursor)
 {
-    Datum val;
-    bool isnull;
-    val = heap_getattr(cursor->tuple, 2, cursor->tupdesc, &isnull);
-    return isnull ? 0 : DatumGetTimestamp(val);
+    return cursor->start;
 }
 
 /* Get current records's stop time */
 Timestamp 
 hvaultCatalogGetStoptime (HvaultCatalogCursor cursor)
 {
-    Datum val;
-    bool isnull;
-    val = heap_getattr(cursor->tuple, 3, cursor->tupdesc, &isnull);
-    return isnull ? 0 : DatumGetTimestamp(val);   
+    return cursor->stop;
 }
 
-/* Get current record's product filename */
-char const * 
-hvaultCatalogGetFilename (HvaultCatalogCursor cursor,
-                          char const *        product)
+/* Get current record's product filenames hash */
+HvaultHash const * 
+hvaultCatalogGetFilenames (HvaultCatalogCursor cursor)
 {
-    int colno;
-    colno = SPI_fnumber(cursor->tupdesc, product);
-    if (colno == SPI_ERROR_NOATTRIBUTE) 
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Can't find specified product in query")));
-    }
-    return SPI_getvalue(cursor->tuple, cursor->tupdesc, colno);
+    return cursor->prod_names;
 }
 
 double 

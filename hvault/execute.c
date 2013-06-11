@@ -487,7 +487,8 @@ static bool
 fetch_next_file(HvaultExecState *scan)
 {
     HvaultCatalogCursorResult res;
-    char const * filename;
+    HvaultHash const * products;
+    HvaultHash const * file;
 
     Assert(scan->cursor);
     res = hvaultCatalogNext(scan->cursor);
@@ -545,8 +546,11 @@ fetch_next_file(HvaultExecState *scan)
     }
     scan->cur_file = hvaultCatalogGetId(scan->cursor);
     scan->file_time = hvaultCatalogGetStarttime(scan->cursor);
-    filename = hvaultCatalogGetFilename(scan->cursor, "filename");
-    return hdf_file_open(&scan->file, filename, scan->has_footprint);
+    products = hvaultCatalogGetFilenames(scan->cursor);
+    HASH_FIND_STR(products, "filename", file);
+    Assert(file);
+    return hdf_file_open(&scan->file, (char const *) file->value, 
+                         scan->has_footprint);
 }
 
 static void 

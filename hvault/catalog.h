@@ -2,6 +2,7 @@
 #define _CATALOG_H_
 
 #include "common.h"
+#include "utils.h"
 #include "analyze.h"
 
 typedef struct HvaultCatalogQueryData * HvaultCatalogQuery;
@@ -12,6 +13,8 @@ typedef enum {
     HvaultCatalogCursorEOF,
     HvaultCatalogCursorError
 } HvaultCatalogCursorResult;
+
+
 
 /*
  * Query construction routines
@@ -95,9 +98,8 @@ Timestamp hvaultCatalogGetStarttime (HvaultCatalogCursor cursor);
 /* Get current records's stop time */
 Timestamp hvaultCatalogGetStoptime (HvaultCatalogCursor cursor);
 
-/* Get current record's product filename */
-char const * hvaultCatalogGetFilename (HvaultCatalogCursor cursor,
-                                       char const *        product);
+/* Get current record's product filenames hash */
+HvaultHash const * hvaultCatalogGetFilenames (HvaultCatalogCursor cursor);
 
 
 /*
