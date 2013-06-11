@@ -1,7 +1,7 @@
 # hvault_fdw extension
 default_version = '0.1'
-directory = '/home/kikht/Documents/vault/fdb/hvault/'
-module_pathname = '/home/kikht/Documents/vault/fdb/hvault/hvault'
+directory = 'extension'
+module_pathname = '$libdir/hvault'
 requires = 'postgis'
 relocatable = true
 
