@@ -412,7 +412,7 @@ hvaultGetRelSize (PlannerInfo *root,
     baserel->rows = num_files * tuples_per_file * scale_factor ; 
     baserel->fdw_private = fdw_private;
 
-    elog(DEBUG2, "GetRelSize: baserestrictinfo: %s\njoininfo: %s",
+    elog(DEBUG3, "GetRelSize: baserestrictinfo: %s\njoininfo: %s",
          nodeToString(baserel->baserestrictinfo),
          nodeToString(baserel->joininfo));
 }
@@ -567,7 +567,7 @@ hvaultGetPlan (PlannerInfo *root,
     }
     rest_clauses = extract_actual_clauses(rest_clauses, false);
 
-    elog(DEBUG2, "GetPlan: scan_cl: %s\nrest_cl: %s",
+    elog(DEBUG3, "GetPlan: scan_cl: %s\nrest_cl: %s",
          nodeToString(scan_clauses),
          nodeToString(rest_clauses));
     elog(DEBUG3, "GetPlan: tlist: %s", nodeToString(tlist));
