@@ -12,7 +12,7 @@ CFLAGS = -fPIC -g -Wall -pedantic -Wno-long-long \
 OBJ = analyze.o catalog.o deparse.o execute.o hdf.o hvault.o interpolate.o \
       metaload.o options.o plan.o predicates.o utils.o 
 HEADERS = analyze.h catalog.h common.h deparse.h execute.h hdf.h interpolate.h \
-          options.h utils.h
+          options.h utils.h uthash.h
 
 hvault.so: $(OBJ)
 	$(CC) $(CFLAGS) -shared -Wl,-soname,$@ -o $@ $^ $(LIB)
