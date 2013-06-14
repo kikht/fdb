@@ -86,6 +86,24 @@ extrapolate_line(size_t m, float const *p, float const *n, float *r)
     }   
 }
 
+void 
+hvaultInterpolateFootprint1xOld (float const * restrict src, 
+                                 float * restrict dst,
+                                 size_t src_h, size_t src_w)
+{
+    size_t i;
+    extrapolate_line(src_w, src + src_w, src, dst);
+    for (i = 0; i < src_h - 1; i++)
+    {
+        interpolate_line(src_w, src + src_w * i, src + src_w * (i + 1), 
+                         dst + (src_w + 1) * (i + 1));
+    }
+    extrapolate_line(src_w, src + src_w * (src_h - 2), 
+                            src + src_w * (src_h - 1), 
+                            dst + (src_w + 1) * src_h );
+}                                 
+
+
 /*
  * Calculates coefficients of bilinear interpolator.
  *
@@ -227,11 +245,11 @@ calculate_box_straight (float const * const restrict src,
     }
 }
 
-#define src_idx(i, j) *(src + i*src_w + j), *(src + i*src_w + j + 1), \
-                      *(src + (i+1)*src_w + j + 1), *(src + (i+1)*src_w + j)
-#define src_sub(i, j) src + i*src_w + j, src_w
-#define krn_sub(i, j) kernel + 4 * (i * kstride + j), kstride
-#define dst_sub(i, j) dst + i * rstride + j, rstride
+#define src_idx(p, q) *(src+(p)*src_w+(q)), *(src+(p)*src_w+(q)+1), \
+                      *(src+((p)+1)*src_w+(q)+1), *(src+((p)+1)*src_w+(q))
+#define src_sub(p, q) src + (p)*src_w + (q), src_w
+#define krn_sub(p, q) kernel + 4 * ((p) * kstride + (q)), kstride
+#define dst_sub(p, q) dst + (p) * rstride + (q), rstride
 
 
 static inline void
@@ -300,7 +318,7 @@ interpolate_grid (float const * const restrict src, float * const restrict dst,
                 src_sub(src_h - 2, 0),
                 big_half, small_half,
                 krn_sub(small_half + k, 0),
-                dst_sub(k * src_h + 1 - big_half, 0));
+                dst_sub(small_half + k*(src_h-1), 0));
 
     /* Lower border */
     for (j = 0; j < src_w - 1; j++)
@@ -309,7 +327,7 @@ interpolate_grid (float const * const restrict src, float * const restrict dst,
                 src_sub(src_h - 2, j),
                 big_half, k,
                 krn_sub(small_half + k, small_half),
-                dst_sub(k * src_h + 1 - big_half, small_half + k*j));
+                dst_sub(small_half + k*(src_h-1), small_half + k*j));
     }
 
     /* Lower right corner */
@@ -317,7 +335,7 @@ interpolate_grid (float const * const restrict src, float * const restrict dst,
                 src_sub(src_h - 2, src_w - 2),
                 big_half, big_half,
                 krn_sub(small_half + k, small_half + k),
-                dst_sub(k * src_h + 1 - big_half, rstride - big_half));
+                dst_sub(small_half + k*(src_h-1), rstride - big_half));
 }
 
 static inline void 
@@ -374,6 +392,7 @@ hvaultInterpolatePoints (float const * restrict src,
 {
     interpolate_points(src, dst, src_h, src_w, kernel, k);
 }
+
 
 void 
 hvaultInterpolateFootprint1x (float const * restrict src, 
