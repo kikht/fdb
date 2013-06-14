@@ -115,7 +115,7 @@ struct HvaultQualGeomData {
 static inline bool 
 isCatalogVar (HvaultColumnType type)
 {
-    return type == HvaultColumnFileIdx || type == HvaultColumnTime;
+    return type == HvaultColumnCatalog;
 }
 
 static bool 
@@ -137,7 +137,7 @@ isCatalogQualWalker (Node *node, HvaultTableInfo const *ctx)
                 Var *var = (Var *) node;
                 if (var->varno == ctx->relid)
                 {
-                    if (!isCatalogVar(ctx->coltypes[var->varattno-1]))
+                    if (!isCatalogVar(ctx->columns[var->varattno-1].type))
                         return true;
                 }
             }
@@ -193,7 +193,7 @@ isCatalogJoinEC (EquivalenceClass *ec, HvaultTableInfo const *table)
             Var *var = (Var *) em->em_expr;
             if (var->varno == table->relid)
             {
-                if (isCatalogVar(table->coltypes[var->varattno-1]))
+                if (isCatalogVar(table->columns[var->varattno-1].type))
                 {
                     if (catalog_var == NULL)
                     {
@@ -321,7 +321,7 @@ isFootprintOpArgs (Expr *varnode,
     if (var->varno != table->relid)
         return false;
 
-    *coltype = table->coltypes[var->varattno - 1];
+    *coltype = table->columns[var->varattno - 1].type;
     if (*coltype != HvaultColumnPoint && *coltype != HvaultColumnFootprint)
         return false;
 

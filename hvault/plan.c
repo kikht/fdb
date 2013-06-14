@@ -17,11 +17,17 @@
 
 typedef struct 
 {
+    List * pathkeys;
+    char const * column;
+    bool desc;
+} SortInfo;
+
+typedef struct 
+{
     PlannerInfo *root;
     RelOptInfo *baserel;
     HvaultQualAnalyzer analyzer;
-    List *pathkeys_list;
-    List *sort_qual_list;
+    List *sort_list;
     List *static_quals;
     List *join_quals;
     List *ec_quals;
@@ -39,106 +45,34 @@ typedef struct
     HvaultTableInfo const *table;
     List *own_quals;
     List *fdw_expr;
-    HvaultCatalogQuery query;
+    List *packed_query;
     List *predicates;
 } HvaultPathData;
 
-static int
-getRowWidth (HvaultColumnType *coltypes, AttrNumber numattrs)
+static PathKey * makeIndexPathkeys (EquivalenceClass *ec, Oid intopfamily)
 {
-    int width = 0;
-    AttrNumber i;
-
-    for (i = 0; i < numattrs; ++i)
-    {
-        switch (coltypes[i]) {
-            case HvaultColumnFloatVal:
-                width += sizeof(double);
-                break;
-            case HvaultColumnInt8Val:
-                width += sizeof(int16_t);
-                break;
-            case HvaultColumnInt16Val:
-                width += sizeof(int16_t);
-                break;
-            case HvaultColumnInt32Val:
-                width += sizeof(int32_t);
-                break;
-            case HvaultColumnInt64Val:
-                width += sizeof(int64_t);
-                break;
-            case HvaultColumnFileIdx:
-            case HvaultColumnLineIdx:
-            case HvaultColumnSampleIdx:
-                width += 4;
-                break;
-            case HvaultColumnPoint:
-                width += POINT_SIZE;
-                break;
-            case HvaultColumnFootprint:
-                width += FOOTPRINT_SIZE;
-                break;
-            case HvaultColumnTime:
-                width += 8;
-            case HvaultColumnNull:
-                /* nop */
-                break;
-            default:
-                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Undefined column type")));
-        }
-    }
-    return width;
-}
-
-static List *
-makePathKeys (EquivalenceClass *base_ec, 
-              Oid base_opfamily, 
-              int base_strategy,
-              EquivalenceClass *line_ec,
-              EquivalenceClass *sample_ec,
-              Oid intopfamily)
-{
-    List *result = NIL;
     PathKey *pk = makeNode(PathKey);
-    pk->pk_eclass = base_ec;
+    pk->pk_eclass = ec;
     pk->pk_nulls_first = false;
-    pk->pk_strategy = base_strategy;
-    pk->pk_opfamily = base_opfamily;
-    result = lappend(result, pk);
-
-    if (line_ec)
-    {
-        PathKey *pk = makeNode(PathKey);
-        pk->pk_eclass = line_ec;
-        pk->pk_nulls_first = false;
-        pk->pk_strategy = BTLessStrategyNumber;
-        pk->pk_opfamily = intopfamily;
-        result = lappend(result, pk);
-
-        if (sample_ec)
-        {
-            PathKey *pk = makeNode(PathKey);
-            pk->pk_eclass = sample_ec;
-            pk->pk_nulls_first = false;
-            pk->pk_strategy = BTLessStrategyNumber;
-            pk->pk_opfamily = intopfamily;
-            result = lappend(result, pk);            
-        }
-    }
-
-    return result;
+    pk->pk_strategy = BTLessStrategyNumber;
+    pk->pk_opfamily = intopfamily;
+    return pk;
 }
 
 static void   
 getSortPathKeys (HvaultPlannerContext * ctx)
 {
-    List *pathkeys;
     ListCell *l, *m;
+    PathKey *line_pk = NULL, *sample_pk = NULL, *index_pk = NULL, *base_pk;
+    EquivalenceClass **catalog_ec;
+    int attnum;
     Oid intopfamily;
-    EquivalenceClass *file_ec = NULL, *line_ec = NULL, 
-                     *sample_ec = NULL, *time_ec = NULL;
+    List *tails = NIL;
 
+    intopfamily  = get_opfamily_oid(BTREE_AM_OID, 
+                                    list_make1(makeString("integer_ops")), 
+                                    false);
+    catalog_ec = palloc0(sizeof(EquivalenceClass*) * table(ctx)->natts);
     foreach(l, ctx->root->eq_classes)
     {
         EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
@@ -153,7 +87,6 @@ getSortPathKeys (HvaultPlannerContext * ctx)
         {
             Var *var;
             EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
-            EquivalenceClass **dest_ec = NULL;
 
             if (!IsA(em->em_expr, Var))
                 continue;
@@ -162,70 +95,84 @@ getSortPathKeys (HvaultPlannerContext * ctx)
             if (ctx->baserel->relid != var->varno)
                 continue;
             
-            Assert(var->varattno < table(ctx)->natts);
-            switch(table(ctx)->coltypes[var->varattno-1])
+            Assert(var->varattno <= table(ctx)->natts);
+            switch (table(ctx)->columns[var->varattno-1].type)
             {
-                case HvaultColumnFileIdx:
-                    dest_ec = &file_ec;
+                case HvaultColumnIndex:
+                    if (index_pk)
+                        elog(ERROR, "Duplicate index column");
+                    index_pk = makeIndexPathkeys(ec, intopfamily);
                     break;
                 case HvaultColumnLineIdx:
-                    dest_ec = &line_ec;
+                    if (line_pk)
+                        elog(ERROR, "Duplicate line_idx column");
+                    line_pk = makeIndexPathkeys(ec, intopfamily);
                     break;
                 case HvaultColumnSampleIdx:
-                    dest_ec = &sample_ec;
+                    if (sample_pk)
+                        elog(ERROR, "Duplicate sample_idx column");
+                    sample_pk = makeIndexPathkeys(ec, intopfamily);
                     break;
-                case HvaultColumnTime:
-                    dest_ec = &time_ec;
+                case HvaultColumnCatalog:
+                    if (catalog_ec[var->varattno-1])
+                        elog(ERROR, "Duplicate catalog column %s", 
+                             table(ctx)->columns[var->varattno-1].name);
+                    catalog_ec[var->varattno-1] = ec;
                     break;
                 default:
-                    /* nop */
+                    /*nop*/
                     break;
-            }
-
-            if (dest_ec)
-            {
-                if (*dest_ec)
-                {
-                    elog(ERROR, "Duplicate special column");
-                    return; /* Will never reach here */
-                }
-
-                *dest_ec = ec;
             }
         }
     }
 
-    intopfamily  = get_opfamily_oid(BTREE_AM_OID, 
-                                    list_make1(makeString("integer_ops")), 
-                                    false);
-    if (file_ec)
-    {
-        pathkeys = makePathKeys(file_ec, intopfamily, BTLessStrategyNumber, 
-                                line_ec, sample_ec, intopfamily);
-        ctx->pathkeys_list = lappend(ctx->pathkeys_list, pathkeys);
-        ctx->sort_qual_list = lappend(ctx->sort_qual_list, "file_id ASC");
+    if (index_pk)
+        tails = lappend(tails, list_make1(index_pk));
 
-        pathkeys = makePathKeys(file_ec, intopfamily, BTGreaterStrategyNumber, 
-                                line_ec, sample_ec, intopfamily);
-        ctx->pathkeys_list = lappend(ctx->pathkeys_list, pathkeys);
-        ctx->sort_qual_list = lappend(ctx->sort_qual_list, "file_id DESC");
+    if (line_pk)
+    {
+        if (sample_pk)
+            tails = lappend(tails, list_make2(line_pk, sample_pk));
+        else
+            tails = lappend(tails, list_make1(line_pk));
     }
 
-    if (time_ec)
+    if (list_length(tails) == 0)
+        tails = list_make1(NIL);
+
+
+    base_pk = makeNode(PathKey);
+    base_pk->pk_nulls_first = false;
+    for (attnum = 0; attnum < table(ctx)->natts; attnum++)
     {
-        Oid timeopfamily = get_opfamily_oid(
-            BTREE_AM_OID, list_make1(makeString("datetime_ops")), false);    
+        base_pk->pk_eclass = catalog_ec[attnum];
+        if (!base_pk->pk_eclass)
+            continue;
 
-        pathkeys = makePathKeys(time_ec, timeopfamily, BTLessStrategyNumber, 
-                                line_ec, sample_ec, intopfamily);
-        ctx->pathkeys_list = lappend(ctx->pathkeys_list, pathkeys);
-        ctx->sort_qual_list = lappend(ctx->sort_qual_list, "starttime ASC");
-
-        pathkeys = makePathKeys(time_ec, intopfamily, BTGreaterStrategyNumber, 
-                                line_ec, sample_ec, intopfamily);
-        ctx->pathkeys_list = lappend(ctx->pathkeys_list, pathkeys);
-        ctx->sort_qual_list = lappend(ctx->sort_qual_list, "starttime DESC");
+        foreach(l, base_pk->pk_eclass->ec_opfamilies)
+        {
+            base_pk->pk_opfamily = lfirst_oid(l);
+            foreach(m, tails)
+            {
+                List *tail = lfirst(m);
+                int desc;
+                for (desc = 0; desc < 2; desc++)
+                {
+                    SortInfo * sort;
+                    base_pk->pk_strategy = desc ? BTLessStrategyNumber : 
+                                                  BTGreaterStrategyNumber;
+                    sort = palloc(sizeof(SortInfo));
+                    sort->column = table(ctx)->columns[attnum].name;
+                    sort->desc = desc;
+                    sort->pathkeys = list_make1(copyObject(base_pk));
+                    sort->pathkeys = list_concat(sort->pathkeys, tail);
+                }
+            }
+        }
     }
+
+    pfree(base_pk);
+    pfree(catalog_ec);
 }
 
 static void
@@ -276,10 +223,9 @@ addForeignPaths (HvaultPlannerContext * ctx,
         }
     }
 
-    forboth(l, ctx->pathkeys_list, m, ctx->sort_qual_list)
+    foreach(l, ctx->sort_list)
     {
-        List *pathkeys = (List *) lfirst(l);
-        char *sort_qual = (char *) lfirst(m);
+        SortInfo * sort = lfirst(l);
         Cost catmin, catmax;
         double catrows;
         int catwidth;
@@ -287,11 +233,12 @@ addForeignPaths (HvaultPlannerContext * ctx,
         Cost startup_cost, total_cost;
         Selectivity selectivity;
 
-        hvaultCatalogSetSort(query, sort_qual);
+        hvaultCatalogSetSort(query, sort->column, sort->desc);
         hvaultCatalogGetCosts(query, &catmin, &catmax, &catrows, &catwidth);
         selectivity = clauselist_selectivity(ctx->root, pred_quals, 
                                              ctx->baserel->relid, 
                                              JOIN_INNER, NULL);
+        /* TODO: get rid of HVAULT_TUPLES_PER_FILE as it depends on driver */
         rows = catrows * selectivity * HVAULT_TUPLES_PER_FILE;
         startup_cost = catmin + STARTUP_COST;
         /* TODO: predicate cost */
@@ -299,7 +246,7 @@ addForeignPaths (HvaultPlannerContext * ctx,
                      rows * PIXEL_COST;
 
         if (add_path_precheck(ctx->baserel, startup_cost, total_cost, 
-                              pathkeys, req_outer))
+                              sort->pathkeys, req_outer))
         {
             ForeignPath *path;
             HvaultPathData *path_data;
@@ -307,13 +254,14 @@ addForeignPaths (HvaultPlannerContext * ctx,
             path_data = palloc(sizeof(HvaultPathData));    
             path_data->table = table(ctx);
             path_data->own_quals = own_quals;
-            path_data->query = hvaultCatalogCloneQuery(query);
+            path_data->packed_query = hvaultCatalogPackQuery(query);
             path_data->fdw_expr = fdw_expr;
             path_data->predicates = predicates;
 
             path = create_foreignscan_path(ctx->root, ctx->baserel, rows, 
-                                           startup_cost, total_cost, pathkeys, 
-                                           req_outer, (List *) path_data);
+                                           startup_cost, total_cost, 
+                                           sort->pathkeys, req_outer, 
+                                           (List *) path_data);
             add_path(ctx->baserel, (Path *) path);
         }
     }
@@ -388,17 +336,17 @@ hvaultGetRelSize (PlannerInfo *root,
     double num_files, tuples_per_file, scale_factor;
     Relation rel;
     TupleDesc tupleDesc;
+    int i;
+    int16_t attlen;
 
     fdw_private = (HvaultTableInfo *) palloc(sizeof(HvaultTableInfo));
 
     rel = heap_open(foreigntableid, AccessShareLock);
     tupleDesc = RelationGetDescr(rel);
     fdw_private->natts = tupleDesc->natts;
-    heap_close(rel, AccessShareLock);    
-    
     fdw_private->relid = baserel->relid;
-    fdw_private->coltypes = hvaultGetUsedColumns(root, baserel, foreigntableid, 
-                                                 fdw_private->natts);
+    fdw_private->columns = hvaultGetUsedColumns(root, baserel, foreigntableid, 
+                                                fdw_private->natts);
     
     fdw_private->catalog = hvaultGetTableOptionString(foreigntableid, 
                                                       "catalog");
@@ -408,7 +356,40 @@ hvaultGetRelSize (PlannerInfo *root,
     tuples_per_file = HVAULT_TUPLES_PER_FILE;
     scale_factor = 1; /* 4 for 500m, 16 for 250m */
 
-    baserel->width = getRowWidth(fdw_private->coltypes, fdw_private->natts);
+    baserel->width = 0;
+    for (i = 0; i < fdw_private->natts; ++i)
+    {
+        switch (fdw_private->columns[i].type) 
+        {
+            case HvaultColumnNull:
+                /* nop */
+                break;
+            case HvaultColumnIndex:
+            case HvaultColumnLineIdx:
+            case HvaultColumnSampleIdx:
+                baserel->width += 4;
+                break;
+            case HvaultColumnPoint:
+                baserel->width += POINT_SIZE;
+                break;
+            case HvaultColumnFootprint:
+                baserel->width += FOOTPRINT_SIZE;
+                break;
+            case HvaultColumnCatalog:
+            case HvaultColumnDataset:
+                /* get width from datatype */
+                attlen = tupleDesc->attrs[i]->attlen;
+                baserel->width += attlen > 0 ? attlen : sizeof(Datum);
+                break;
+            default:
+                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Undefined column type")));
+        }
+    }
+    heap_close(rel, AccessShareLock);    
+
+
+
     baserel->rows = num_files * tuples_per_file * scale_factor ; 
     baserel->fdw_private = fdw_private;
 
@@ -425,11 +406,11 @@ hvaultGetPaths (PlannerInfo *root,
     ListCell *l, *m, *k;
     HvaultPlannerContext ctx;
     int considered_clauses;
+    SortInfo * no_sort_info = palloc(sizeof(SortInfo));
 
     ctx.root = root;
     ctx.baserel = baserel;
-    ctx.pathkeys_list = NIL;  
-    ctx.sort_qual_list = NIL;
+    ctx.sort_list = NIL;
     ctx.static_quals = NIL;
     ctx.join_quals = NIL;
     ctx.ec_quals = NIL;
@@ -441,8 +422,9 @@ hvaultGetPaths (PlannerInfo *root,
     {
         getSortPathKeys(&ctx);
     }
-    ctx.pathkeys_list = lappend(ctx.pathkeys_list, NIL);
-    ctx.sort_qual_list = lappend(ctx.sort_qual_list, NULL);
+    no_sort_info->pathkeys = NIL;
+    no_sort_info->column = NULL;
+    ctx.sort_list = lappend(ctx.sort_list, no_sort_info);
 
     extractCatalogQuals(&ctx);
     /* Create simple unparametrized path */
@@ -573,14 +555,7 @@ hvaultGetPlan (PlannerInfo *root,
     elog(DEBUG3, "GetPlan: tlist: %s", nodeToString(tlist));
 
     /* store fdw_private in List */
-    coltypes = NIL;
-    for (attnum = 0; attnum < fdw_private->table->natts; attnum++)
-    {
-        coltypes = lappend_int(coltypes, fdw_private->table->coltypes[attnum]);
-    }
-    fdw_plan_private = lappend(fdw_plan_private, 
-                               hvaultCatalogPackQuery(fdw_private->query));
-    fdw_plan_private = lappend(fdw_plan_private, coltypes);
+    fdw_plan_private = lappend(fdw_plan_private, fdw_private->packed_query);
     fdw_plan_private = lappend(fdw_plan_private, fdw_private->predicates);
 
     return make_foreignscan(tlist, rest_clauses, baserel->relid, 

@@ -37,17 +37,15 @@
 typedef enum HvaultColumnType
 {
     HvaultColumnNull,
-    HvaultColumnPoint,
-    HvaultColumnFootprint,
-    HvaultColumnFileIdx,
+    HvaultColumnCatalog,
+    HvaultColumnIndex,
     HvaultColumnLineIdx,
     HvaultColumnSampleIdx,
-    HvaultColumnTime,
-    HvaultColumnFloatVal,
-    HvaultColumnInt8Val,
-    HvaultColumnInt16Val,
-    HvaultColumnInt32Val,
-    HvaultColumnInt64Val
+    HvaultColumnFootprint,
+    HvaultColumnPoint,
+    HvaultColumnDataset,
+
+    HvaultColumnNumTypes
 } HvaultColumnType;
 
 typedef enum 
@@ -82,10 +80,16 @@ extern char const * hvaultGeomopstr[HvaultGeomNumAllOpers];
 
 typedef struct 
 {
+    HvaultColumnType type;
+    char const * name;
+} HvaultColumnInfo;
+
+typedef struct 
+{
     Index relid;      
     int natts;
-    HvaultColumnType *coltypes;
+    HvaultColumnInfo * columns;
     char const * catalog;
 } HvaultTableInfo;
 
-#endif
+#endif /* _COMMON_H_ */

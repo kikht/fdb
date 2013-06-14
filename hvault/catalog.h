@@ -38,7 +38,8 @@ void hvaultCatalogAddQual (HvaultCatalogQuery query,
 
 /* Add sort qual to query */
 void hvaultCatalogSetSort (HvaultCatalogQuery query, 
-                           char const *       qual);
+                           char const *       qual,
+                           bool               desc);
 
 /* Add limit qual to query */
 void hvaultCatalogSetLimit (HvaultCatalogQuery query, 

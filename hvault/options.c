@@ -1,13 +1,14 @@
 #include "options.h"
 
-static HvaultColumnType
+static HvaultColumnInfo
 get_column_type(Oid foreigntableid, AttrNumber attnum)
 {
     List *colopts;
     ListCell *m;
-    HvaultColumnType res;
+    HvaultColumnInfo res;
 
-    res = HvaultColumnFloatVal;
+    res.type = HvaultColumnDataset;
+    res.name = NULL;
     colopts = GetForeignColumnOptions(foreigntableid, attnum);
     foreach(m, colopts)
     {
@@ -16,57 +17,43 @@ get_column_type(Oid foreigntableid, AttrNumber attnum)
         {
             char *type = defGetString(opt);
 
-            if (strcmp(type, "float") == 0)
+            if (strcmp(type, "point") == 0) 
             {
-                res = HvaultColumnFloatVal;
-            }
-            else if (strcmp(type, "byte") == 0) 
-            {
-                res = HvaultColumnInt8Val;
-            }
-            else if (strcmp(type, "int2") == 0) 
-            {
-                res = HvaultColumnInt16Val;
-            }
-            else if (strcmp(type, "int4") == 0) 
-            {
-                res = HvaultColumnInt32Val;
-            }
-            else if (strcmp(type, "int8") == 0) 
-            {
-                res = HvaultColumnInt32Val;
-            }
-            else if (strcmp(type, "point") == 0) 
-            {
-                res = HvaultColumnPoint;
+                res.type = HvaultColumnPoint;
             }
             else if (strcmp(type, "footprint") == 0)
             {
-                res = HvaultColumnFootprint;   
+                res.type = HvaultColumnFootprint;   
             }
-            else if (strcmp(type, "file_index") == 0)
+            else if (strcmp(type, "catalog") == 0) 
             {
-                res = HvaultColumnFileIdx;
+                res.type = HvaultColumnCatalog;
+            }
+            else if (strcmp(type, "index") == 0)
+            {
+                res.type = HvaultColumnIndex;
             }
             else if (strcmp(type, "line_index") == 0)
             {
-                res = HvaultColumnLineIdx;
+                res.type = HvaultColumnLineIdx;
             }
             else if (strcmp(type, "sample_index") == 0)
             {
-                res = HvaultColumnSampleIdx;
+                res.type = HvaultColumnSampleIdx;
             }
-            else if (strcmp(type, "time") == 0)
+            else if (strcmp(type, "dataset") == 0)
             {
-                res = HvaultColumnTime;
+                res.type = HvaultColumnDataset;
             }
             else
             {
                 ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                                errmsg("Unknown column type %s", 
-                                       type)));
+                                errmsg("Unknown column type %s", type)));
             }
-            elog(DEBUG1, "col: %d strtype: %s type: %d", attnum, type, res);
+        }
+        else if (strcmp(opt->defname, "name") == 0)
+        {
+            res.name = defGetString(opt);
         }
     }
 
@@ -75,7 +62,7 @@ get_column_type(Oid foreigntableid, AttrNumber attnum)
 
 typedef struct 
 {
-    HvaultColumnType *types;
+    HvaultColumnInfo *info;
     Index relid;
     Oid foreigntableid;
     AttrNumber natts;
@@ -94,9 +81,9 @@ get_column_types_walker(Node *node, HvaultColumnTypeWalkerContext *cxt)
             AttrNumber attnum;
             Assert(var->varattno <= cxt->natts);
             attnum = var->varattno-1;
-            if (cxt->types[attnum] == HvaultColumnNull)
+            if (cxt->info[attnum].type == HvaultColumnNull)
             {
-                cxt->types[attnum] = get_column_type(cxt->foreigntableid, 
+                cxt->info[attnum] = get_column_type(cxt->foreigntableid, 
                                                      var->varattno);
             }
         }
@@ -104,7 +91,7 @@ get_column_types_walker(Node *node, HvaultColumnTypeWalkerContext *cxt)
     return expression_tree_walker(node, get_column_types_walker, (void *) cxt);
 }
 
-HvaultColumnType *
+HvaultColumnInfo *
 hvaultGetUsedColumns(PlannerInfo *root, 
                      RelOptInfo *baserel, 
                      Oid foreigntableid,
@@ -117,10 +104,11 @@ hvaultGetUsedColumns(PlannerInfo *root,
     walker_cxt.natts = natts;
     walker_cxt.relid = baserel->relid;
     walker_cxt.foreigntableid = foreigntableid;
-    walker_cxt.types = palloc(sizeof(HvaultColumnType) * walker_cxt.natts);
+    walker_cxt.info = palloc(sizeof(HvaultColumnInfo) * walker_cxt.natts);
     for (attnum = 0; attnum < walker_cxt.natts; attnum++)
     {
-        walker_cxt.types[attnum] = HvaultColumnNull;
+        walker_cxt.info[attnum].type = HvaultColumnNull;
+        walker_cxt.info[attnum].name = NULL;
     }
 
     get_column_types_walker((Node *) baserel->reltargetlist, &walker_cxt);
@@ -150,24 +138,24 @@ hvaultGetUsedColumns(PlannerInfo *root,
         }
     }
 
-    return walker_cxt.types;
+    return walker_cxt.info;
 }
 
-List *
-hvaultGetAllColumns(Relation relation)
-{
-    List *result = NIL;
-    AttrNumber attnum, natts;
-    Oid foreigntableid = RelationGetRelid(relation);
+// List *
+// hvaultGetAllColumns(Relation relation)
+// {
+//     List *result = NIL;
+//     AttrNumber attnum, natts;
+//     Oid foreigntableid = RelationGetRelid(relation);
 
-    natts = RelationGetNumberOfAttributes(relation);
-    for (attnum = 0; attnum < natts; ++attnum)
-    {
-        result = lappend_int(result, get_column_type(foreigntableid, attnum+1));
-    }
+//     natts = RelationGetNumberOfAttributes(relation);
+//     for (attnum = 0; attnum < natts; ++attnum)
+//     {
+//         result = lappend_int(result, get_column_type(foreigntableid, attnum+1));
+//     }
 
-    return result;
-}
+//     return result;
+// }
 
 DefElem * 
 hvaultGetTableOption(Oid foreigntableid, char *option)

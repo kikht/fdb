@@ -2,8 +2,9 @@
 #define _OPTIONS_H_
 
 #include "common.h"
+#include "utils.h"
 
-HvaultColumnType * hvaultGetUsedColumns (PlannerInfo *root, 
+HvaultColumnInfo * hvaultGetUsedColumns (PlannerInfo *root, 
                                          RelOptInfo *baserel, 
                                          Oid foreigntableid,
                                          AttrNumber natts);
@@ -21,7 +22,5 @@ hvaultGetTableOptionBool (Oid foreigntableid, char *option)
 {
     return defGetBoolean(hvaultGetTableOption(foreigntableid, option));
 }
-
-List * hvaultGetAllColumns (Relation relation);
 
 #endif /* _OPTIONS_H_ */

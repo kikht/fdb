@@ -9,7 +9,8 @@ struct NameHash {
 struct HvaultCatalogQueryData
 {
     HvaultDeparseContext deparse;
-    char const * sort_qual;
+    char const * sort_column;
+    bool sort_desc;
     size_t limit_qual;
     struct NameHash * prods;
 };
@@ -26,7 +27,8 @@ hvaultCatalogInitQuery (HvaultTableInfo const * table)
 {
     HvaultCatalogQuery query = palloc(sizeof(struct HvaultCatalogQueryData));
     hvaultDeparseContextInit(&query->deparse, table);
-    query->sort_qual = NULL;
+    query->sort_column = NULL;
+    query->sort_desc = false;
     query->limit_qual = NO_LIMIT;
     query->prods = NULL;
     return query;
@@ -46,8 +48,11 @@ hvaultCatalogCloneQuery (HvaultCatalogQuery query)
         s->key = p->key;
         HASH_ADD_KEYPTR(hh, res->prods, s->key, strlen(s->key), s);
     }
-    if (query->sort_qual != NULL)
-        res->sort_qual = pstrdup(query->sort_qual);
+    if (query->sort_column != NULL)
+    {
+        res->sort_column = pstrdup(query->sort_column);
+        res->sort_desc = query->sort_desc;
+    }
     res->limit_qual = query->limit_qual;
     return res;
 }
@@ -57,8 +62,8 @@ void
 hvaultCatalogFreeQuery (HvaultCatalogQuery query)
 {
     hvaultDeparseContextFree(&query->deparse);
-    if (query->sort_qual != NULL)
-        pfree((void *) query->sort_qual);
+    if (query->sort_column != NULL)
+        pfree((void *) query->sort_column);
 
     HASH_CLEAR(hh, query->prods);
 }
@@ -90,9 +95,11 @@ hvaultCatalogAddQual (HvaultCatalogQuery query,
 /* Add sort qual to query */
 void 
 hvaultCatalogSetSort (HvaultCatalogQuery query, 
-                      char const *       qual)
+                      char const *       qual,
+                      bool               desc)
 {
-    query->sort_qual = qual != NULL ? pstrdup(qual) : NULL;
+    query->sort_column = qual != NULL ? pstrdup(qual) : NULL;
+    query->sort_desc = desc;
 }
 
 /* Add limit qual to query */
@@ -129,10 +136,12 @@ static void buildQueryString (HvaultCatalogQuery query, StringInfo query_str)
                            quote_identifier(query->deparse.table->catalog));
     appendStringInfoString(query_str, query->deparse.query.data);
 
-    if (query->sort_qual)
+    if (query->sort_column)
     {
         appendStringInfoString(query_str, " ORDER BY ");
-        appendStringInfoString(query_str, query->sort_qual);
+        appendStringInfoString(query_str, query->sort_column);
+        if (query->sort_desc)
+            appendStringInfoString(query_str, " DESC");
     }
 
     if (query->limit_qual != NO_LIMIT)

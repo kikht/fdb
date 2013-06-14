@@ -26,24 +26,15 @@ deparseVar(Var *node, HvaultDeparseContext *ctx)
     {
         /* Catalog column */
         HvaultColumnType type;
-        char *colname = NULL;
+        char const *colname = NULL;
         
         Assert(node->varattno > 0);
         Assert(node->varattno <= ctx->table->natts);
+        Assert(ctx->table->columns[node->varattno-1].type 
+               == HvaultColumnCatalog);
 
-        type = ctx->table->coltypes[node->varattno-1];
-        switch(type)
-        {
-            case HvaultColumnTime:
-                colname = "starttime";
-                
-            break;
-            case HvaultColumnFileIdx:
-                colname = "file_id";
-            break;
-            default:
-                elog(ERROR, "unsupported local column type: %d", type);
-        }
+        colname = ctx->table->columns[node->varattno-1].name;
+        Assert(colname);
         appendStringInfoString(&ctx->query, quote_identifier(colname));
     }
     else
