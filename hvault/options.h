@@ -4,12 +4,14 @@
 #include "common.h"
 #include "utils.h"
 
-HvaultColumnInfo * hvaultGetUsedColumns (PlannerInfo *root, 
-                                         RelOptInfo *baserel, 
-                                         Oid foreigntableid,
-                                         AttrNumber natts);
+HvaultColumnType hvaultGetColumnType (DefElem * def);
 
-DefElem * hvaultGetTableOption (Oid foreigntableid, char *option);
+static inline DefElem * 
+hvaultGetTableOption (Oid foreigntableid, char *option)
+{
+    ForeignTable *foreigntable = GetForeignTable(foreigntableid);
+    return defFindByName(foreigntable->options, option);
+}
 
 static inline char * 
 hvaultGetTableOptionString (Oid foreigntableid, char *option)

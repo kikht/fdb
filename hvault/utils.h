@@ -23,10 +23,7 @@ int list_append_unique_pos (List ** list, void * item);
 /* Checks whether any of the Relids in 'relids_list' is equal to 'relids' */
 bool bms_equal_any(Relids relids, List *relids_list);
 
-typedef struct {
-    char * key;
-    void * value;
-    UT_hash_handle hh;
-} HvaultHash;
+/* Finds DefElem with specified name in List */
+DefElem * defFindByName (List * list, char const * key);
 
 #endif /* _UTILS_H_ */

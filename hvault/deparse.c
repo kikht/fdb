@@ -33,7 +33,7 @@ deparseVar(Var *node, HvaultDeparseContext *ctx)
         Assert(ctx->table->columns[node->varattno-1].type 
                == HvaultColumnCatalog);
 
-        colname = ctx->table->columns[node->varattno-1].name;
+        colname = ctx->table->columns[node->varattno-1].cat_name;
         Assert(colname);
         appendStringInfoString(&ctx->query, quote_identifier(colname));
     }
@@ -517,7 +517,8 @@ hvaultDeparseContextInit (HvaultDeparseContext  * ctx,
 }
 
 /* Frees all resources allocated by context. It's up to caller to pfree 
- * the struct itself (so it is possible to allocate struct on stack)
+ * the struct itself (so it is possible to allocate struct on stack, 
+ * or reinit this context later)
  */
 void 
 hvaultDeparseContextFree (HvaultDeparseContext * ctx)
@@ -525,6 +526,7 @@ hvaultDeparseContextFree (HvaultDeparseContext * ctx)
     list_free(ctx->fdw_expr);
     ctx->table = NULL;
     pfree(ctx->query.data);
+    ctx->query.data = NULL;
 }
 
 

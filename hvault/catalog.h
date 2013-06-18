@@ -14,6 +14,13 @@ typedef enum {
     HvaultCatalogCursorError
 } HvaultCatalogCursorResult;
 
+typedef struct {
+    char * name;
+    char * str;
+    Datum  val;
+    Oid    typid;
+    UT_hash_handle hh;
+} HvaultCatalogItem;
 
 
 /*
@@ -30,7 +37,7 @@ HvaultCatalogQuery hvaultCatalogCloneQuery (HvaultCatalogQuery query);
 void hvaultCatalogFreeQuery (HvaultCatalogQuery query);
 
 /* Add required product to query */
-void hvaultCatalogAddProduct (HvaultCatalogQuery query, char const * name);
+void hvaultCatalogAddColumn (HvaultCatalogQuery query, char const * name);
 
 /* Add catalog qual to query */
 void hvaultCatalogAddQual (HvaultCatalogQuery query,
@@ -90,17 +97,8 @@ char const * hvaultCatalogGetQuery (HvaultCatalogCursor cursor);
 /* Moves cursor to the next catalog record */
 HvaultCatalogCursorResult hvaultCatalogNext (HvaultCatalogCursor cursor);
 
-/* Gets current record's id */
-int hvaultCatalogGetId (HvaultCatalogCursor cursor);
-
-/* Get current records's start time */
-Timestamp hvaultCatalogGetStarttime (HvaultCatalogCursor cursor);
-
-/* Get current records's stop time */
-Timestamp hvaultCatalogGetStoptime (HvaultCatalogCursor cursor);
-
-/* Get current record's product filenames hash */
-HvaultHash const * hvaultCatalogGetFilenames (HvaultCatalogCursor cursor);
+/* Get current record's values */
+HvaultCatalogItem const * hvaultCatalogGetValues (HvaultCatalogCursor cursor);
 
 
 /*

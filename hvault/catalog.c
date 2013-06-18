@@ -12,7 +12,7 @@ struct HvaultCatalogQueryData
     char const * sort_column;
     bool sort_desc;
     size_t limit_qual;
-    struct NameHash * prods;
+    struct NameHash * columns;
 };
 
 #define NO_LIMIT ((size_t)(-1))
@@ -30,7 +30,7 @@ hvaultCatalogInitQuery (HvaultTableInfo const * table)
     query->sort_column = NULL;
     query->sort_desc = false;
     query->limit_qual = NO_LIMIT;
-    query->prods = NULL;
+    query->columns = NULL;
     return query;
 }
 
@@ -42,11 +42,11 @@ hvaultCatalogCloneQuery (HvaultCatalogQuery query)
     HvaultCatalogQuery res = hvaultCatalogInitQuery(query->deparse.table);
     res->deparse.fdw_expr = list_copy(query->deparse.fdw_expr);
     appendStringInfoString(&res->deparse.query, query->deparse.query.data);
-    for (p = query->prods; p != NULL; p = p->hh.next) 
+    for (p = query->columns; p != NULL; p = p->hh.next) 
     {
         s = palloc(sizeof(struct NameHash));
         s->key = p->key;
-        HASH_ADD_KEYPTR(hh, res->prods, s->key, strlen(s->key), s);
+        HASH_ADD_KEYPTR(hh, res->columns, s->key, strlen(s->key), s);
     }
     if (query->sort_column != NULL)
     {
@@ -65,20 +65,20 @@ hvaultCatalogFreeQuery (HvaultCatalogQuery query)
     if (query->sort_column != NULL)
         pfree((void *) query->sort_column);
 
-    HASH_CLEAR(hh, query->prods);
+    HASH_CLEAR(hh, query->columns);
 }
 
 /* Add required product to query */
 void 
-hvaultCatalogAddProduct (HvaultCatalogQuery query, char const * name)
+hvaultCatalogAddColumn (HvaultCatalogQuery query, char const * name)
 {
     struct NameHash * s;
-    HASH_FIND_STR(query->prods, name, s);
+    HASH_FIND_STR(query->columns, name, s);
     if (!s)
     {
         s = palloc(sizeof(struct NameHash));
         s->key = name;
-        HASH_ADD_KEYPTR(hh, query->prods, s->key, strlen(s->key), s);
+        HASH_ADD_KEYPTR(hh, query->columns, s->key, strlen(s->key), s);
     }
 }
 
@@ -121,11 +121,13 @@ hvaultCatalogGetParams (HvaultCatalogQuery query)
 static void buildQueryString (HvaultCatalogQuery query, StringInfo query_str)
 {
     struct NameHash *p;
-    appendStringInfoString(query_str, "SELECT file_id, starttime, stoptime");
 
-    Assert(HASH_COUNT(query->prods) > 0);
-    Assert(query->prods != NULL);
-    for (p = query->prods; p != NULL; p = p->hh.next) 
+    Assert(query->columns != NULL);
+    Assert(HASH_COUNT(query->columns) > 0);
+    
+    appendStringInfoString(query_str, "SELECT ");
+    appendStringInfoString(query_str, query->columns->key);
+    for (p = query->columns->hh.next; p != NULL; p = p->hh.next) 
     {
         appendStringInfoString(query_str, ", ");
         appendStringInfoString(query_str, p->key);
@@ -223,17 +225,13 @@ hvaultCatalogPackQuery(HvaultCatalogQuery query)
 
 struct HvaultCatalogCursorData 
 {
-    char const *  query;         /* Catalog query string */
-    SPIPlanPtr    prep_stmt;
-    int           nargs;
-    char const *  name;
+    char const *        query;         /* Catalog query string */
+    SPIPlanPtr          prep_stmt;
+    int                 nargs;
+    char const *        name;
 
-    MemoryContext memctx;
-    int32_t       file_id;
-    Timestamp     start, stop;
-    HvaultHash *  prod_names;
-    // TupleDesc     tupdesc;
-    // HeapTuple     tuple;
+    MemoryContext       memctx;
+    HvaultCatalogItem * item;
 };
 
 /* Creates new catalog cursor and initializes it with packed query */
@@ -248,12 +246,13 @@ hvaultCatalogInitCursor (List * packed_query, MemoryContext memctx)
     cursor->nargs = intVal(lsecond(packed_query));
     cursor->prep_stmt = NULL;
     cursor->name = NULL;
-    cursor->prod_names = NULL;
+    cursor->item = NULL;
     cursor->memctx = AllocSetContextCreate(memctx,
                                            "hvault_fdw catalog cursor data",
                                            ALLOCSET_SMALL_MINSIZE,
                                            ALLOCSET_SMALL_INITSIZE,
                                            ALLOCSET_SMALL_MAXSIZE);
+    //TODO: initialize vals array and use it to store Datum values
     return cursor;
 }
 
@@ -261,7 +260,7 @@ hvaultCatalogInitCursor (List * packed_query, MemoryContext memctx)
 void 
 hvaultCatalogFreeCursor (HvaultCatalogCursor cursor)
 {
-    HASH_CLEAR(hh, cursor->prod_names);
+    HASH_CLEAR(hh, cursor->item);
 
     if (cursor->memctx != NULL) 
     {
@@ -312,8 +311,6 @@ fetchTuple (HvaultCatalogCursor cursor, Portal file_cursor)
 {
     MemoryContext oldmemctx = NULL;
     int i;
-    Datum val;
-    bool isnull = true;
 
     Assert(file_cursor);
     SPI_cursor_fetch(file_cursor, true, 1);
@@ -323,71 +320,29 @@ fetchTuple (HvaultCatalogCursor cursor, Portal file_cursor)
         elog(DEBUG1, "No more files");
         return HvaultCatalogCursorEOF;
     }   
-    if (SPI_tuptable->tupdesc->natts < 4 ||
-        SPI_tuptable->tupdesc->attrs[0]->atttypid != INT4OID ||
-        SPI_tuptable->tupdesc->attrs[1]->atttypid != TIMESTAMPOID ||
-        SPI_tuptable->tupdesc->attrs[2]->atttypid != TIMESTAMPOID)
-    {
-        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Error in catalog query (header)")));
-        return HvaultCatalogCursorError; /* Will never reach this */         
-    }
-    for (i = 3; i < SPI_tuptable->tupdesc->natts; i++)
-    {
-        if (SPI_tuptable->tupdesc->attrs[i]->atttypid != TEXTOID)
-        {
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Error in catalog query (products)")));
-            return HvaultCatalogCursorError; /* Will never reach this */                
-        }
-    }
-    
-    /* Read file_id */
-    val = heap_getattr(SPI_tuptable->vals[0], 1, SPI_tuptable->tupdesc, 
-                       &isnull);
-    if (!isnull)
-    {
-        cursor->file_id = DatumGetInt32(val);
-    }
-    else
-    {
-        elog(WARNING, "Wrong entry in catalog, null file_id");
-        cursor->file_id = 0;
-    }
-    /* Read starttime */
-    val = heap_getattr(SPI_tuptable->vals[0], 2, SPI_tuptable->tupdesc, 
-                       &isnull);
-    cursor->start = isnull ? 0 : DatumGetTimestamp(val);
-    /* Read stoptime */
-    val = heap_getattr(SPI_tuptable->vals[0], 3, SPI_tuptable->tupdesc, 
-                       &isnull);
-    cursor->stop = isnull ? 0 : DatumGetTimestamp(val);
 
-    /* Read product filenames */
     oldmemctx = MemoryContextSwitchTo(cursor->memctx);
-    for (i = 3; i < SPI_tuptable->tupdesc->natts; i++)
+    for (i = 0; i < SPI_tuptable->tupdesc->natts; i++)
     {
         char * name = NULL;
-        char * value = NULL;
-        HvaultHash * s = NULL;
+        HvaultCatalogItem * column = NULL;
+        bool isnull;
 
         name = SPI_fname(SPI_tuptable->tupdesc, i+1);
-        value = SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, i+1);
-        Assert(name);
+        HASH_FIND_STR(cursor->item, name, column);
+        if (!column) 
+        {
+            column = palloc(sizeof(HvaultCatalogItem));
+            column->name = name;
+            column->typid = SPI_tuptable->tupdesc->attrs[i]->atttypid;
+            HASH_ADD_KEYPTR(hh, cursor->item, column->name, 
+                            strlen(column->name), column);
+        }
 
-        HASH_FIND_STR(cursor->prod_names, name, s);
-        if (s) 
-        {
-            pfree(s->value);
-            s->value = value;
-        }
-        else 
-        {
-            s = palloc(sizeof(HvaultHash));
-            s->key = name;
-            s->value = value;
-            HASH_ADD_KEYPTR(hh, cursor->prod_names, s->key, strlen(s->key), s);
-        }
+        column->val = heap_getattr(SPI_tuptable->vals[0], i+1, 
+                                   SPI_tuptable->tupdesc, &isnull);
+        column->str = isnull ? NULL : SPI_getvalue(SPI_tuptable->vals[0], 
+                                                   SPI_tuptable->tupdesc, i+1);
     }
     MemoryContextSwitchTo(oldmemctx);
 
@@ -499,32 +454,11 @@ hvaultCatalogNext (HvaultCatalogCursor cursor)
     return res;
 }
 
-/* Gets current record's id */
-int 
-hvaultCatalogGetId (HvaultCatalogCursor cursor)
+/* Get current record's values */
+HvaultCatalogItem const * 
+hvaultCatalogGetValues (HvaultCatalogCursor cursor)
 {
-    return cursor->file_id;
-}
-
-/* Get current records's start time */
-Timestamp 
-hvaultCatalogGetStarttime (HvaultCatalogCursor cursor)
-{
-    return cursor->start;
-}
-
-/* Get current records's stop time */
-Timestamp 
-hvaultCatalogGetStoptime (HvaultCatalogCursor cursor)
-{
-    return cursor->stop;
-}
-
-/* Get current record's product filenames hash */
-HvaultHash const * 
-hvaultCatalogGetFilenames (HvaultCatalogCursor cursor)
-{
-    return cursor->prod_names;
+    return cursor->item;
 }
 
 double 

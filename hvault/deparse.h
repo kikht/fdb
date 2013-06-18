@@ -31,7 +31,8 @@ void hvaultDeparseContextInit (HvaultDeparseContext  * ctx,
                                HvaultTableInfo const * table);
 
 /* Frees all resources allocated by context. It's up to caller to pfree 
- * the struct itself (so it is possible to allocate struct on stack)
+ * the struct itself (so it is possible to allocate struct on stack, 
+ * or reinit this context later)
  */
 void hvaultDeparseContextFree (HvaultDeparseContext * ctx);
 

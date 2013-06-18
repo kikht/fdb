@@ -3,8 +3,8 @@
 
 #include <stdlib.h>
 
-void interpolate_line(size_t m, float const *p, float const *n, float *r);
-void extrapolate_line(size_t m, float const *p, float const *n, float *r);
+// void interpolate_line(size_t m, float const *p, float const *n, float *r);
+// void extrapolate_line(size_t m, float const *p, float const *n, float *r);
 
 void hvaultInterpolateFootprintKernel (size_t size, float * kernel);
 

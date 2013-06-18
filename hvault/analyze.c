@@ -554,3 +554,40 @@ hvaultDeparseQual (HvaultQual * qual, HvaultDeparseContext * ctx)
                     errmsg("undefined HvaultQual type")));
     }
 }
+
+typedef struct 
+{
+    void (*cb)(Var *var, void * expr);
+    void * arg;
+    Index relid;
+} UsedColumnsWakerContext;
+
+static bool
+usedColumnsWalker (Node *node, UsedColumnsWakerContext * cxt)
+{
+    if (node == NULL)
+        return false;
+
+    if (IsA(node, Var))
+    {
+        Var *var = (Var *) node;
+        if (var->varno == cxt->relid)
+        {
+            cxt->cb(var, cxt->arg);
+        }
+    }
+    return expression_tree_walker(node, usedColumnsWalker, (void *) cxt);
+}
+
+void 
+hvaultAnalyzeUsedColumns (Node * expr, 
+                          Index relid, 
+                          void (*cb)(Var *var, void * arg),
+                          void * arg)
+{
+    UsedColumnsWakerContext cxt;
+    cxt.relid = relid;
+    cxt.cb = cb;
+    cxt.arg = arg;
+    usedColumnsWalker(expr, &cxt);
+}

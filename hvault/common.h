@@ -31,19 +31,20 @@
 #include <utils/rel.h>
 #include <utils/syscache.h>
 #include <utils/timestamp.h>
+#include <utils/varbit.h>
 
 #define HVAULT_TUPLES_PER_FILE (double)(2030*1354)
 
 typedef enum HvaultColumnType
 {
     HvaultColumnNull,
-    HvaultColumnCatalog,
     HvaultColumnIndex,
     HvaultColumnLineIdx,
     HvaultColumnSampleIdx,
     HvaultColumnFootprint,
     HvaultColumnPoint,
     HvaultColumnDataset,
+    HvaultColumnCatalog,
 
     HvaultColumnNumTypes
 } HvaultColumnType;
@@ -81,7 +82,7 @@ extern char const * hvaultGeomopstr[HvaultGeomNumAllOpers];
 typedef struct 
 {
     HvaultColumnType type;
-    char const * name;
+    char const * cat_name;
 } HvaultColumnInfo;
 
 typedef struct 
