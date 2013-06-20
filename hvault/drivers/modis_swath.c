@@ -186,7 +186,7 @@ addGeolocationColumns (HvaultModisSwathDriver * driver, List * options)
 
     driver->lon_layer = makeLayer();
     driver->lon_layer->file = file;
-    driver->lon_layer->sds_name = "Latitude";
+    driver->lon_layer->sds_name = "Longitude";
     driver->lon_layer->layer.src_type = HvaultFloat32;
     driver->lon_layer->layer.item_size = sizeof(float);
     driver->lon_layer->layer.hfactor = factor;
@@ -222,7 +222,7 @@ addRegularColumn (HvaultModisSwathDriver * driver,
         return; /* Will never reach here */
     }
     layer->file = file;
-    layer->layer.colnum = attr->attnum;
+    layer->layer.colnum = attr->attnum-1;
     layer->coltypid = attr->atttypid;
     switch (attr->atttypid)
     {
