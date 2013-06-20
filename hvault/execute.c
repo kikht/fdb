@@ -272,9 +272,12 @@ fetchNextFile (ExecState *state)
             /* Can't fetch more files */
             elog(DEBUG1, "No more files");
             return false;
+        case HvaultCatalogCursorOK:
+            /* nop */
+            break;
         default:
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Unexpected cursor retval")));
+                            errmsg("Unexpected cursor retval %d", res)));
             return false; /* Will never reach this */                
     }
     products = hvaultCatalogGetValues(state->cursor);
