@@ -707,104 +707,107 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
         }
     }
 
-    geo_factor = driver->lat_layer->layer.vfactor;
-    Assert(driver->lat_layer->layer.hfactor == geo_factor);
-    Assert(driver->lat_layer->layer.vfactor == geo_factor);
-    Assert(driver->lon_layer->layer.hfactor == geo_factor);
-    Assert(driver->lon_layer->layer.vfactor == geo_factor);
-    geo_lines = driver->num_lines / geo_factor;
-    geo_samples = driver->num_samples / geo_factor;
-
-    /* Calc point geolocation */
-    if (driver->flags & FLAG_HAS_POINT)
+    if (driver->flags & (FLAG_HAS_FOOTPRINT | FLAG_HAS_POINT))
     {
-        switch (geo_factor)
+        geo_factor = driver->lat_layer->layer.vfactor;
+        Assert(driver->lat_layer->layer.hfactor == geo_factor);
+        Assert(driver->lat_layer->layer.vfactor == geo_factor);
+        Assert(driver->lon_layer->layer.hfactor == geo_factor);
+        Assert(driver->lon_layer->layer.vfactor == geo_factor);
+        geo_lines = driver->num_lines / geo_factor;
+        geo_samples = driver->num_samples / geo_factor;
+
+        /* Calc point geolocation */
+        if (driver->flags & FLAG_HAS_POINT)
         {
-            case 1:
-                chunk->point_lat = driver->lat_layer->layer.data;
-                chunk->point_lon = driver->lon_layer->layer.data;
-                break;
-            case 2:
-                hvaultInterpolatePoints2x(driver->lat_layer->layer.data, 
-                                          driver->lat_point_data, 
-                                          geo_lines, geo_samples);
-                hvaultInterpolatePoints2x(driver->lon_layer->layer.data, 
-                                          driver->lon_point_data, 
-                                          geo_lines, geo_samples);
-                break;
-            case 4:
-                hvaultInterpolatePoints4x(driver->lat_layer->layer.data, 
-                                          driver->lat_point_data, 
-                                          geo_lines, geo_samples);
-                hvaultInterpolatePoints4x(driver->lon_layer->layer.data, 
-                                          driver->lon_point_data, 
-                                          geo_lines, geo_samples);
-            default:
+            switch (geo_factor)
             {
-                /* TODO: move kernel generation to initialization stage */
-                float * kernel = palloc(sizeof(float) * 16 * 
-                                        geo_factor * geo_factor);
-                hvaultInterpolatePointKernel(geo_factor, kernel);
-                hvaultInterpolatePoints(driver->lat_layer->layer.data, 
-                                        driver->lat_point_data, 
-                                        geo_lines, geo_samples, 
-                                        kernel, geo_factor);
-                hvaultInterpolatePoints(driver->lon_layer->layer.data, 
-                                        driver->lon_point_data, 
-                                        geo_lines, geo_samples, 
-                                        kernel, geo_factor);
-                pfree(kernel);
+                case 1:
+                    chunk->point_lat = driver->lat_layer->layer.data;
+                    chunk->point_lon = driver->lon_layer->layer.data;
+                    break;
+                case 2:
+                    hvaultInterpolatePoints2x(driver->lat_layer->layer.data, 
+                                              driver->lat_point_data, 
+                                              geo_lines, geo_samples);
+                    hvaultInterpolatePoints2x(driver->lon_layer->layer.data, 
+                                              driver->lon_point_data, 
+                                              geo_lines, geo_samples);
+                    break;
+                case 4:
+                    hvaultInterpolatePoints4x(driver->lat_layer->layer.data, 
+                                              driver->lat_point_data, 
+                                              geo_lines, geo_samples);
+                    hvaultInterpolatePoints4x(driver->lon_layer->layer.data, 
+                                              driver->lon_point_data, 
+                                              geo_lines, geo_samples);
+                default:
+                {
+                    /* TODO: move kernel generation to initialization stage */
+                    float * kernel = palloc(sizeof(float) * 16 * 
+                                            geo_factor * geo_factor);
+                    hvaultInterpolatePointKernel(geo_factor, kernel);
+                    hvaultInterpolatePoints(driver->lat_layer->layer.data, 
+                                            driver->lat_point_data, 
+                                            geo_lines, geo_samples, 
+                                            kernel, geo_factor);
+                    hvaultInterpolatePoints(driver->lon_layer->layer.data, 
+                                            driver->lon_point_data, 
+                                            geo_lines, geo_samples, 
+                                            kernel, geo_factor);
+                    pfree(kernel);
+                }
+                    break;
             }
-                break;
         }
-    }
 
-    /* Calc footprint geolocation */
-    if (driver->flags & FLAG_HAS_FOOTPRINT)
-    {
-        switch (geo_factor)
+        /* Calc footprint geolocation */
+        if (driver->flags & FLAG_HAS_FOOTPRINT)
         {
-            case 1:
-                hvaultInterpolateFootprint1x(driver->lat_layer->layer.data, 
-                                             driver->lat_data, 
-                                             geo_lines, geo_samples);
-                hvaultInterpolateFootprint1x(driver->lon_layer->layer.data, 
-                                             driver->lon_data, 
-                                             geo_lines, geo_samples);
-                break;
-            case 2:
-                hvaultInterpolateFootprint2x(driver->lat_layer->layer.data, 
-                                             driver->lat_data, 
-                                             geo_lines, geo_samples);
-                hvaultInterpolateFootprint2x(driver->lon_layer->layer.data, 
-                                             driver->lon_data, 
-                                             geo_lines, geo_samples);
-                break;
-            case 4:
-                hvaultInterpolateFootprint4x(driver->lat_layer->layer.data, 
-                                             driver->lat_data, 
-                                             geo_lines, geo_samples);
-                hvaultInterpolateFootprint4x(driver->lon_layer->layer.data, 
-                                             driver->lon_data, 
-                                             geo_lines, geo_samples);
-            default:
+            switch (geo_factor)
             {
-                /* TODO: move kernel generation to initialization stage */
-                float * kernel = palloc(sizeof(float) * 4 * 
-                                        (2 * geo_factor + 1) * 
-                                        (2 * geo_factor + 1));
-                hvaultInterpolatePointKernel(geo_factor, kernel);
-                hvaultInterpolateFootprint(driver->lat_layer->layer.data, 
-                                           driver->lat_data, 
-                                           geo_lines, geo_samples, 
-                                           kernel, geo_factor);
-                hvaultInterpolateFootprint(driver->lon_layer->layer.data, 
-                                           driver->lon_data, 
-                                           geo_lines, geo_samples, 
-                                           kernel, geo_factor);
-                pfree(kernel);
+                case 1:
+                    hvaultInterpolateFootprint1x(driver->lat_layer->layer.data, 
+                                                 driver->lat_data, 
+                                                 geo_lines, geo_samples);
+                    hvaultInterpolateFootprint1x(driver->lon_layer->layer.data, 
+                                                 driver->lon_data, 
+                                                 geo_lines, geo_samples);
+                    break;
+                case 2:
+                    hvaultInterpolateFootprint2x(driver->lat_layer->layer.data, 
+                                                 driver->lat_data, 
+                                                 geo_lines, geo_samples);
+                    hvaultInterpolateFootprint2x(driver->lon_layer->layer.data, 
+                                                 driver->lon_data, 
+                                                 geo_lines, geo_samples);
+                    break;
+                case 4:
+                    hvaultInterpolateFootprint4x(driver->lat_layer->layer.data, 
+                                                 driver->lat_data, 
+                                                 geo_lines, geo_samples);
+                    hvaultInterpolateFootprint4x(driver->lon_layer->layer.data, 
+                                                 driver->lon_data, 
+                                                 geo_lines, geo_samples);
+                default:
+                {
+                    /* TODO: move kernel generation to initialization stage */
+                    float * kernel = palloc(sizeof(float) * 4 * 
+                                            (2 * geo_factor + 1) * 
+                                            (2 * geo_factor + 1));
+                    hvaultInterpolatePointKernel(geo_factor, kernel);
+                    hvaultInterpolateFootprint(driver->lat_layer->layer.data, 
+                                               driver->lat_data, 
+                                               geo_lines, geo_samples, 
+                                               kernel, geo_factor);
+                    hvaultInterpolateFootprint(driver->lon_layer->layer.data, 
+                                               driver->lon_data, 
+                                               geo_lines, geo_samples, 
+                                               kernel, geo_factor);
+                    pfree(kernel);
+                }
+                    break;
             }
-                break;
         }
     }
 
