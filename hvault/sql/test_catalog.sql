@@ -50,8 +50,8 @@ CREATE FOREIGN TABLE test_catalog (
     sample_id int4        OPTIONS (type 'sample_index'),
 
     
-    point     geometry    OPTIONS (type 'point'),
-    footprint geometry    OPTIONS (type 'footprint'),
+    point     geometry    OPTIONS (type 'point', cat_name 'filename'),
+    footprint geometry    OPTIONS (type 'footprint', cat_name 'filename'),
 
     Surface_Reflectance_Band_1   float8  
         OPTIONS (type 'dataset', cat_name 'filename', 

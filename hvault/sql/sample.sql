@@ -1,3 +1,5 @@
+select * from test_catalog limit 10;
+
 select avg(((Reflectance_band_quality & x'3ffffffc'::int) = 0)::int), file_id 
     from test_catalog group by file_id;
 
@@ -15,7 +17,8 @@ SELECT d.file_id, d.line_id, d.sample_id, ST_AsText(point)
 SELECT * FROM test_catalog WHERE NOT ST_Contains(footprint, point);
 
 
-SELECT DISTINCT file_id FROM test_catalog;
+SELECT DISTINCT file_id FROM test_catalog 
+    WHERE Surface_Reflectance_Band_1 IS NOT NULL;
 
 SELECT DISTINCT file_id FROM test_catalog 
     WHERE Surface_Reflectance_Band_1 IS NULL;
@@ -23,7 +26,8 @@ SELECT DISTINCT file_id FROM test_catalog
 SELECT COUNT(*), file_id FROM test_catalog 
     WHERE Surface_Reflectance_Band_1 IS NULL GROUP BY file_id;
 
-SELECT MAX(line_id) FROM test_catalog GROUP BY file_id;
+SELECT MAX(line_id), MAX(Surface_Reflectance_Band_1) 
+    FROM test_catalog GROUP BY file_id;
 
 
 SELECT file_id, line_id, sample_id, 
