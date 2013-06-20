@@ -413,6 +413,8 @@ hvaultGetRelSize (PlannerInfo *root,
     HvaultPlannerContext * ctx = palloc0(sizeof(HvaultPlannerContext));
     Relation rel;
 
+    elog(DEBUG1, "in hvaultGetRelSize");
+
     ctx->root = root;
     ctx->baserel = baserel;
     ctx->foreigntableid = foreigntableid;
@@ -454,6 +456,8 @@ hvaultGetPaths (PlannerInfo *root,
     int considered_clauses;
     SortInfo * no_sort_info = palloc(sizeof(SortInfo));
     HvaultPlannerContext * ctx = baserel->fdw_private;
+
+    elog(DEBUG1, "in hvaultGetPaths");
 
     Assert(ctx->root == root);
     Assert(ctx->baserel == baserel);
@@ -581,6 +585,7 @@ hvaultGetPlan (PlannerInfo *root,
     (void)(root);
     (void)(foreigntableid);
 
+    elog(DEBUG1, "in hvaultGetPlan");
     elog(DEBUG1, "Selected path quals: %s", 
          nodeToString(fdw_private->own_quals));
 
