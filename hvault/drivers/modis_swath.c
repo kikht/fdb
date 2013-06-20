@@ -654,6 +654,12 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
     MemoryContextReset(driver->chunkmemctx);
     oldmemctx = MemoryContextSwitchTo(driver->chunkmemctx);
 
+    if (driver->cur_line >= driver->num_lines)
+    {
+        chunk->size = 0;
+        return;
+    }
+
     chunk->const_layers = NIL;
     chunk->layers = NIL;
     chunk->lat = driver->lat_data;
