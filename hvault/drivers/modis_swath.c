@@ -42,7 +42,7 @@ typedef struct
     HvaultModisSwathLayer *lat_layer, *lon_layer;
     HvaultModisSwathFile * files;
     float *lat_data, *lon_data, *lat_point_data, *lon_point_data;
-    int num_lines, num_samples;
+    size_t num_lines, num_samples;
     size_t scanline_size;
     size_t cur_line;
     uint32_t flags;
@@ -131,7 +131,7 @@ hvaultModisSwathFree (HvaultFileDriver * drv)
 {
     HvaultModisSwathDriver * driver = (HvaultModisSwathDriver *) drv;
 
-    Assert(driver->driver.methods == hvaultModisSwathMethods);
+    Assert(driver->driver.methods == &hvaultModisSwathMethods);
     MemoryContextDelete(driver->memctx);
 }
 
@@ -298,9 +298,8 @@ hvaultModisSwathAddColumn (HvaultFileDriver * drv,
     HvaultModisSwathDriver * driver = (HvaultModisSwathDriver *) drv;
     MemoryContext oldmemctx;
     HvaultColumnType coltype;
-    HvaultModisSwathLayer * layer;
 
-    Assert(driver->driver.methods == hvaultModisSwathMethods);
+    Assert(driver->driver.methods == &hvaultModisSwathMethods);
     oldmemctx = MemoryContextSwitchTo(driver->memctx);
 
     coltype = hvaultGetColumnType(defFindByName(options, 
@@ -334,7 +333,7 @@ hvaultModisSwathClose (HvaultFileDriver * drv)
     ListCell *l;
     HvaultModisSwathFile * file;
 
-    Assert(driver->driver.methods == hvaultModisSwathMethods);
+    Assert(driver->driver.methods == &hvaultModisSwathMethods);
 
     foreach(l, driver->layers)
     {
@@ -375,11 +374,11 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
     ListCell *l;
 
     hvaultModisSwathClose(drv);
-    driver->num_samples = -1;
-    driver->num_lines = -1;
+    driver->num_samples = 0;
+    driver->num_lines = 0;
     driver->cur_line = 0;
 
-    Assert(driver->driver.methods == hvaultModisSwathMethods);
+    Assert(driver->driver.methods == &hvaultModisSwathMethods);
     oldmemctx = MemoryContextSwitchTo(driver->memctx);
 
     {
@@ -415,7 +414,7 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
     {
         HvaultModisSwathLayer *layer = lfirst(l);
         int32_t sds_idx, rank, dims[H4_MAX_VAR_DIMS], sdnattrs, sdtype;
-        int32_t norm_lines, norm_samples, layer_lines, layer_samples;
+        size_t norm_lines, norm_samples, layer_lines, layer_samples;
         HvaultDataType cur_dataype;
         double cal_err, offset_err;
 
@@ -468,8 +467,9 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
         }
         layer_lines = dims[0];
         layer_samples = dims[1];
-
         norm_lines = layer_lines * layer->layer.vfactor;
+        norm_samples = layer_samples * layer->layer.hfactor;
+
         if (norm_samples < driver->scanline_size)
         {
             elog(WARNING, "SDS %s in file %s has only %d lines, skipping",
@@ -478,27 +478,26 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
             layer->sds_id = FAIL;
             continue;
         }
-        if (driver->num_lines == -1)
+        if (driver->num_lines == 0)
         {
             driver->num_lines = norm_lines;
         } 
         else if (driver->num_lines != norm_lines)
         {
-            elog(WARNING, "SDS %s in file %s with %d lines is incompatible with others (%d), skipping",
+            elog(WARNING, "SDS %s in file %s with %lu lines is incompatible with others (%lu), skipping",
                  layer->sds_name, layer->file->filename, 
                  norm_lines, driver->num_lines);
             SDendaccess(layer->sds_id);
             layer->sds_id = FAIL;
             continue;
         }
-        norm_samples = layer_samples * layer->layer.hfactor;
-        if (driver->num_samples == -1)
+        if (driver->num_samples == 0)
         {
             driver->num_samples = norm_samples;
         } 
         else if (norm_samples != driver->num_samples)
         {
-            elog(WARNING, "SDS %s in file %s with %d samples is incompatible with others (%d), skipping",
+            elog(WARNING, "SDS %s in file %s with %lu samples is incompatible with others (%lu), skipping",
                  layer->sds_name, layer->file->filename, 
                  norm_samples, driver->num_samples);
             SDendaccess(layer->sds_id);
@@ -601,7 +600,7 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
                 (driver->scanline_size / layer->layer.vfactor));
     }
     /* Sanity check */
-    if (driver->num_lines < 0 || driver->num_samples < 0)
+    if (driver->num_lines == 0 || driver->num_samples == 0)
     {
         elog(WARNING, "Can't get number of lines and samples");
         MemoryContextSwitchTo(oldmemctx);
@@ -648,9 +647,10 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
     HvaultModisSwathDriver * driver = (HvaultModisSwathDriver *) drv;
     MemoryContext oldmemctx;
     ListCell *l;
-    size_t geo_lines, geo_samples, geo_factor;
+    size_t geo_lines, geo_samples;
+    int geo_factor;
 
-    Assert(driver->driver.methods == hvaultModisSwathMethods);
+    Assert(driver->driver.methods == &hvaultModisSwathMethods);
     MemoryContextReset(driver->chunkmemctx);
     oldmemctx = MemoryContextSwitchTo(driver->chunkmemctx);
 
