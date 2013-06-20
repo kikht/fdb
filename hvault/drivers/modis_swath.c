@@ -694,7 +694,7 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
             chunk->layers = lappend(chunk->layers, layer);
     }
     /* Shift longitude */
-    if (driver->flags & FLAG_SHIFT_LONGITUDE)
+    if (driver->flags & FLAG_SHIFT_LONGITUDE && driver->lon_layer != NULL)
     {
         size_t i;
         const size_t size = driver->num_samples * driver->scanline_size 
