@@ -432,6 +432,8 @@ hvaultGetRelSize (PlannerInfo *root,
 
     ctx->query = hvaultCatalogInitQuery(table(ctx));
     ctx->tuple_width = 0;
+    hvaultAnalyzeUsedColumns((Node *) baserel->reltargetlist, baserel->relid, 
+                             processUsedColumn, ctx);
     hvaultAnalyzeUsedColumns((Node *) baserel->baserestrictinfo, baserel->relid, 
                              processUsedColumn, ctx);
     hvaultAnalyzeUsedColumns((Node *) baserel->joininfo, baserel->relid, 
