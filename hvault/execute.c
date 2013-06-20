@@ -93,7 +93,7 @@ void hvaultBegin (ForeignScanState * node, int eflags)
                                   ExecInitExpr(expr, &node->ss.ps));
     }
 
-    Assert(list_length(plan->fdw_private) == HvaultPlanNumParams);
+    Assert(list_length(plan->fdw_private) == 3);
     packed_query = linitial(plan->fdw_private);
     packed_predicates = lsecond(plan->fdw_private);
     coltypes = lthird(plan->fdw_private);
@@ -448,6 +448,7 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                 break;
             default:
                 elog(ERROR, "Datatype is not supported");
+                return; /* Will never reach this */
         }
         state->values[layer->colnum] = dst;
     }
@@ -478,7 +479,7 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                 break;
             case HvaultBitmap:
                 elog(ERROR, "Scaled bitmaps are not supported");
-                break;
+                return; /* Will never reach this */
             case HvaultUInt8:
                 dst = ((uint8_t *)  src)[idx];
                 break;
@@ -493,6 +494,7 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                 break;    
             default:
                 elog(ERROR, "Datatype is not supported");
+                return; /* Will never reach this */
         }
         *static_dst = dst / layer->scale - layer->offset;
         state->values[layer->colnum] = Float8GetDatumFast(dst);
@@ -622,6 +624,7 @@ fillPixelColumns (ExecState *state)
                 break;
             default:
                 elog(ERROR, "Layer type is not supported");
+                return; /* Will never reach this */
         }
         fillOneColumn(state, layer, idx);
     }

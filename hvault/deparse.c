@@ -25,7 +25,6 @@ deparseVar(Var *node, HvaultDeparseContext *ctx)
     if (node->varno == ctx->table->relid)
     {
         /* Catalog column */
-        HvaultColumnType type;
         char const *colname = NULL;
         
         Assert(node->varattno > 0);

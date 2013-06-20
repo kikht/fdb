@@ -7,7 +7,7 @@ LIB=-l:$(POSTGRES_PREFIX)/lib/postgis-2.0.so $(HDFLIB)
 CFLAGS = -std=gnu11 -fPIC -g -Wall -Wextra -pedantic \
 	     -D_POSIX_C_SOURCE -DUSE_ASSERT_CHECKING
 # optimization flags
-CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING
+CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING -Wno-extra
 
 OBJ = analyze.o catalog.o deparse.o driver.o execute.o hvault.o interpolate.o \
       metaload.o options.o plan.o predicates.o utils.o \

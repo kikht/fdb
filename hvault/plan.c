@@ -368,7 +368,10 @@ processUsedColumn (Var * var, void * arg)
         case HvaultColumnDataset:
             /* get width from datatype */
             attlen = ctx->tupdesc->attrs[var->varattno-1]->attlen;
-            ctx->tuple_width += attlen > 0 ? attlen : sizeof(Datum);
+            if (attlen > 0)
+                ctx->tuple_width += attlen;
+            else
+                ctx->tuple_width += sizeof(Datum);
             break;
         default:
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
@@ -451,6 +454,10 @@ hvaultGetPaths (PlannerInfo *root,
     int considered_clauses;
     SortInfo * no_sort_info = palloc(sizeof(SortInfo));
     HvaultPlannerContext * ctx = baserel->fdw_private;
+
+    Assert(ctx->root == root);
+    Assert(ctx->baserel == baserel);
+    Assert(ctx->foreigntableid == foreigntableid);
 
     ctx->sort_list = NIL;
     ctx->static_quals = NIL;
@@ -570,6 +577,9 @@ hvaultGetPlan (PlannerInfo *root,
     ListCell *l;
     List * coltypes;
     int i;
+
+    (void)(root);
+    (void)(foreigntableid);
 
     elog(DEBUG1, "Selected path quals: %s", 
          nodeToString(fdw_private->own_quals));

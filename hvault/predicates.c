@@ -51,6 +51,10 @@ Overleft_op(float latmin,
             float lonmax, 
             GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmax <= arg->xmax;
 }
 
@@ -61,6 +65,10 @@ Left_op(float latmin,
         float lonmax, 
         GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmax < arg->xmin;
 }
 
@@ -71,6 +79,10 @@ Right_op(float latmin,
          float lonmax, 
          GBOX const *arg)
 {
+    (void)(latmax);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmin > arg->xmax;
 }
 
@@ -81,6 +93,10 @@ Overright_op(float latmin,
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmax);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmin >= arg->xmin;
 }
 
@@ -91,6 +107,10 @@ Overbelow_op(float latmin,
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmin);
+
     return lonmax <= arg->ymax;
 }
 
@@ -101,6 +121,10 @@ Below_op(float latmin,
          float lonmax, 
          GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmin);
+
     return lonmax < arg->ymin;
 }
 
@@ -111,6 +135,10 @@ Above_op(float latmin,
          float lonmax, 
          GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmax);
+
     return lonmin > arg->ymax;
 }
 
@@ -121,6 +149,10 @@ Overabove_op(float latmin,
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmax);
+
     return lonmin >= arg->ymin;
 }
 
@@ -131,6 +163,10 @@ CommLeft_op(float latmin,
             float lonmax, 
             GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmax >= arg->xmax;
 }
 
@@ -141,6 +177,10 @@ CommRight_op(float latmin,
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmax);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmin <= arg->xmin;
 }
 
@@ -151,6 +191,10 @@ CommBelow_op(float latmin,
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmin);
+
     return lonmax >= arg->ymax;
 }
 
@@ -161,6 +205,10 @@ CommAbove_op(float latmin,
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmax);
+
     return lonmin <= arg->ymin;
 }
 
