@@ -7,7 +7,7 @@ LIB=-l:$(POSTGRES_PREFIX)/lib/postgis-2.0.so $(HDFLIB)
 CFLAGS = -std=gnu11 -fPIC -g -Wall -Wextra -pedantic \
 	     -D_POSIX_C_SOURCE -DUSE_ASSERT_CHECKING
 # optimization flags
-CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING -Wno-extra
+# CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING -Wno-extra
 
 OBJ = analyze.o catalog.o deparse.o driver.o execute.o hvault.o interpolate.o \
       metaload.o options.o plan.o predicates.o utils.o \
@@ -23,7 +23,7 @@ hvault.so: $(OBJ)
 	$(CC) $(CFLAGS) $(INC) -o $@ -c $<
 
 clean:
-	rm -rf *.o *.so
+	rm -rf *.o *.so drivers/*.o
 
 install: hvault.so hvault--0.1.sql hvault.control
 	install --mode=755 hvault.so $(POSTGRES_PREFIX)/lib
