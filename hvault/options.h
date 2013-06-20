@@ -10,6 +10,7 @@
 #define HVAULT_COLUMN_OPTION_HFACTOR "hfactor"
 #define HVAULT_COLUMN_OPTION_VFACTOR "vfactor"
 #define HVAULT_COLUMN_OPTION_DATASET "dataset"
+#define HVAULT_COLUMN_OPTION_SCANLINE "scanline"
 
 HvaultColumnType hvaultGetColumnType (DefElem * def);
 

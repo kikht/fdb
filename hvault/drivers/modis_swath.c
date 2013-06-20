@@ -94,6 +94,7 @@ hvaultModisSwathInit (List * table_options, MemoryContext memctx)
 {
     HvaultModisSwathDriver * driver;
     MemoryContext oldmemctx, newmemctx;
+    DefElem * def;
 
     newmemctx = AllocSetContextCreate(memctx, 
                                       "hvault modis swath driver", 
@@ -101,17 +102,23 @@ hvaultModisSwathInit (List * table_options, MemoryContext memctx)
                                       ALLOCSET_DEFAULT_INITSIZE,
                                       ALLOCSET_DEFAULT_MAXSIZE);
     oldmemctx = MemoryContextSwitchTo(newmemctx);
-    driver = palloc(sizeof(HvaultModisSwathDriver));
-
+    driver = palloc0(sizeof(HvaultModisSwathDriver));
     driver->memctx = newmemctx;
-    driver->flags = 0;
-    if (defGetBoolean(defFindByName(table_options, "shift_longitude")))
-        driver->flags |= FLAG_SHIFT_LONGITUDE;
     driver->chunkmemctx = AllocSetContextCreate(newmemctx, 
                                                 "hvault modis swath chunk", 
                                                 ALLOCSET_SMALL_MINSIZE,
                                                 ALLOCSET_SMALL_INITSIZE,
                                                 ALLOCSET_SMALL_MAXSIZE);
+
+    driver->flags = 0;
+    def = defFindByName(table_options, "shift_longitude");
+    if (def != NULL && defGetBoolean(def))
+        driver->flags |= FLAG_SHIFT_LONGITUDE;
+
+    def = defFindByName(table_options, HVAULT_COLUMN_OPTION_SCANLINE);
+    driver->scanline_size = def != NULL ? defGetInt64(def) 
+                                        : DEFAULT_SCANLINE_SIZE;
+
     driver->driver.methods = &hvaultModisSwathMethods;
     driver->driver.geotype = HvaultGeolocationCompact;
 
@@ -269,6 +276,7 @@ addRegularColumn (HvaultModisSwathDriver * driver,
     layer->layer.type = layer->layer.hfactor == 1 && layer->layer.vfactor == 1 ?
                         HvaultLayerSimple : HvaultLayerChunked;             
 
+    Assert(layer != NULL);
     driver->layers = lappend(driver->layers, layer);
 }
 
