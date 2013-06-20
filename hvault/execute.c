@@ -271,7 +271,6 @@ fetchNextFile (ExecState *state)
     {
         case HvaultCatalogCursorEOF:
             /* Can't fetch more files */
-            elog(DEBUG1, "No more files");
             return false;
         case HvaultCatalogCursorOK:
             /* nop */
@@ -501,7 +500,7 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                 return; /* Will never reach this */
         }
         *static_dst = dst / layer->scale - layer->offset;
-        state->values[layer->colnum] = Float8GetDatumFast(dst);
+        state->values[layer->colnum] = Float8GetDatumFast(*static_dst);
     }
 }
 
