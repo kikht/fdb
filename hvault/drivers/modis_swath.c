@@ -706,29 +706,30 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
         if (layer->layer.colnum >= 0)
             chunk->layers = lappend(chunk->layers, layer);
     }
-    /* Shift longitude */
-    if (driver->flags & FLAG_SHIFT_LONGITUDE && driver->lon_layer != NULL)
-    {
-        size_t i;
-        const size_t size = driver->num_samples * driver->scanline_size 
-                          / driver->lon_layer->layer.hfactor 
-                          / driver->lon_layer->layer.vfactor;
-        float * const buf = driver->lon_layer->layer.data;
-        for (i = 0; i < size; i++)
-        {
-            buf[i] += (float)(360 * (buf[i] < 0));
-        }
-    }
 
     if (driver->flags & (FLAG_HAS_FOOTPRINT | FLAG_HAS_POINT))
     {
         geo_factor = driver->lat_layer->layer.vfactor;
+        Assert(driver->lat_layer);
+        Assert(driver->lon_layer);
         Assert(driver->lat_layer->layer.hfactor == geo_factor);
         Assert(driver->lat_layer->layer.vfactor == geo_factor);
         Assert(driver->lon_layer->layer.hfactor == geo_factor);
         Assert(driver->lon_layer->layer.vfactor == geo_factor);
-        geo_lines = driver->num_lines / geo_factor;
+        geo_lines = driver->scanline_size / geo_factor;
         geo_samples = driver->num_samples / geo_factor;
+
+        /* Shift longitude */
+        if (driver->flags & FLAG_SHIFT_LONGITUDE)
+        {
+            size_t i;
+            const size_t size = geo_lines * geo_samples;
+            float * const buf = driver->lon_layer->layer.data;
+            for (i = 0; i < size; i++)
+            {
+                buf[i] += (float)(360 * (buf[i] < 0));
+            }
+        }
 
         /* Calc point geolocation */
         if (driver->flags & FLAG_HAS_POINT)
