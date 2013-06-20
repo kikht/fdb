@@ -2,26 +2,30 @@
 #define _OPTIONS_H_
 
 #include "common.h"
+#include "utils.h"
 
-HvaultColumnType * hvaultGetUsedColumns (PlannerInfo *root, 
-                                         RelOptInfo *baserel, 
-                                         Oid foreigntableid,
-                                         AttrNumber natts);
+#define HVAULT_COLUMN_OPTION_TYPE "type"
+#define HVAULT_COLUMN_OPTION_CATNAME "cat_name"
+#define HVAULT_COLUMN_OPTION_FACTOR "factor"
+#define HVAULT_COLUMN_OPTION_HFACTOR "hfactor"
+#define HVAULT_COLUMN_OPTION_VFACTOR "vfactor"
+#define HVAULT_COLUMN_OPTION_DATASET "dataset"
+#define HVAULT_COLUMN_OPTION_SCANLINE "scanline"
 
-DefElem * hvaultGetTableOption (Oid foreigntableid, char *option);
+HvaultColumnType hvaultGetColumnType (DefElem * def);
+
+static inline DefElem * 
+hvaultGetTableOption (Oid foreigntableid, char const * option)
+{
+    ForeignTable *foreigntable = GetForeignTable(foreigntableid);
+    return defFindByName(foreigntable->options, option);
+}
 
 static inline char * 
-hvaultGetTableOptionString (Oid foreigntableid, char *option)
+hvaultGetTableOptionString (Oid foreigntableid, char const * option)
 {
-    return defGetString(hvaultGetTableOption(foreigntableid, option));
+    DefElem * def = hvaultGetTableOption(foreigntableid, option);
+    return def == NULL ? NULL : defGetString(def);
 }
-
-static inline bool 
-hvaultGetTableOptionBool (Oid foreigntableid, char *option)
-{
-    return defGetBoolean(hvaultGetTableOption(foreigntableid, option));
-}
-
-List * hvaultGetAllColumns (Relation relation);
 
 #endif /* _OPTIONS_H_ */

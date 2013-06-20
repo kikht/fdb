@@ -31,3 +31,25 @@ bms_equal_any(Relids relids, List *relids_list)
     }
     return false;
 }
+
+DefElem *
+defFindByName (List * list, char const * key)
+{
+    ListCell *l;
+    foreach(l, list)
+    {
+        DefElem *opt = lfirst(l);
+        if (strcmp(key, opt->defname) == 0)
+        {
+            return opt;
+        }
+    }    
+    return NULL;
+}
+
+char *
+defFindStringByName (List *list, const char *key)
+{
+    DefElem * def = defFindByName(list, key);
+    return def == NULL ? NULL : defGetString(def);
+}

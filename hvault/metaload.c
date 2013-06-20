@@ -473,6 +473,7 @@ mass_load_modis_swath_walker(char const * fpath,
                              struct stat const *sb,
                              int typeflag)
 {
+    (void)(sb);
     char const *basename = fpath;
     char const *temp = fpath;
     if (typeflag != FTW_F)

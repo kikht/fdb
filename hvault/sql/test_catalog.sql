@@ -42,31 +42,69 @@ SELECT hvault_mass_load_modis_swath(
 ANALYZE hdf_catalog;
 
 CREATE FOREIGN TABLE test_catalog (
-    file_id   int4        OPTIONS (type 'file_index'),
+    file_id   int4        OPTIONS (type 'catalog', cat_name 'file_id'),
+    time      timestamp   OPTIONS (type 'catalog', cat_name 'starttime'),
+
+    index     int4        OPTIONS (type 'index'),
     line_id   int4        OPTIONS (type 'line_index'),
     sample_id int4        OPTIONS (type 'sample_index'),
-    point     geometry    OPTIONS (type 'point'),
-    footprint geometry    OPTIONS (type 'footprint'),
-    time      timestamp   OPTIONS (type 'time'),
 
-    Surface_Reflectance_Band_1   float8  OPTIONS (sds '1km Surface Reflectance Band 1'),
-    Surface_Reflectance_Band_2   float8  OPTIONS (sds '1km Surface Reflectance Band 2'),
-    Surface_Reflectance_Band_3   float8  OPTIONS (sds '1km Surface Reflectance Band 3'),
-    Surface_Reflectance_Band_4   float8  OPTIONS (sds '1km Surface Reflectance Band 4'),
-    Surface_Reflectance_Band_5   float8  OPTIONS (sds '1km Surface Reflectance Band 5'),
-    Surface_Reflectance_Band_6   float8  OPTIONS (sds '1km Surface Reflectance Band 6'),
-    Surface_Reflectance_Band_7   float8  OPTIONS (sds '1km Surface Reflectance Band 7'),
-    Surface_Reflectance_Band_8   float8  OPTIONS (sds '1km Surface Reflectance Band 8'),
-    Surface_Reflectance_Band_9   float8  OPTIONS (sds '1km Surface Reflectance Band 9'),
-    Surface_Reflectance_Band_10  float8  OPTIONS (sds '1km Surface Reflectance Band 10'),
-    Surface_Reflectance_Band_11  float8  OPTIONS (sds '1km Surface Reflectance Band 11'),
-    Surface_Reflectance_Band_12  float8  OPTIONS (sds '1km Surface Reflectance Band 12'),
-    Surface_Reflectance_Band_13  float8  OPTIONS (sds '1km Surface Reflectance Band 13'),
-    Surface_Reflectance_Band_14  float8  OPTIONS (sds '1km Surface Reflectance Band 14'),
-    Surface_Reflectance_Band_15  float8  OPTIONS (sds '1km Surface Reflectance Band 15'),
-    Surface_Reflectance_Band_16  float8  OPTIONS (sds '1km Surface Reflectance Band 16'),
+    
+    point     geometry    OPTIONS (type 'point', cat_name 'filename'),
+    footprint geometry    OPTIONS (type 'footprint', cat_name 'filename'),
 
-    Reflectance_Band_Quality     int4    OPTIONS (sds '1km Reflectance Band Quality', type 'int4')
+    Surface_Reflectance_Band_1   float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 1'),
+    Surface_Reflectance_Band_2   float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 2'),
+    Surface_Reflectance_Band_3   float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 3'),
+    Surface_Reflectance_Band_4   float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 4'),
+    Surface_Reflectance_Band_5   float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 5'),
+    Surface_Reflectance_Band_6   float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 6'),
+    Surface_Reflectance_Band_7   float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 7'),
+    Surface_Reflectance_Band_8   float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 8'),
+    Surface_Reflectance_Band_9   float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 9'),
+    Surface_Reflectance_Band_10  float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 10'),
+    Surface_Reflectance_Band_11  float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 11'),
+    Surface_Reflectance_Band_12  float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 12'),
+    Surface_Reflectance_Band_13  float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 13'),
+    Surface_Reflectance_Band_14  float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 14'),
+    Surface_Reflectance_Band_15  float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 15'),
+    Surface_Reflectance_Band_16  float8  
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 16'),
+
+    Reflectance_Band_Quality     int4    
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Reflectance Band Quality')
 ) SERVER hvault_service
   OPTIONS (catalog 'hdf_catalog',
            shift_longitude 'true');

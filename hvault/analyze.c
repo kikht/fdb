@@ -115,7 +115,7 @@ struct HvaultQualGeomData {
 static inline bool 
 isCatalogVar (HvaultColumnType type)
 {
-    return type == HvaultColumnFileIdx || type == HvaultColumnTime;
+    return type == HvaultColumnCatalog;
 }
 
 static bool 
@@ -137,7 +137,7 @@ isCatalogQualWalker (Node *node, HvaultTableInfo const *ctx)
                 Var *var = (Var *) node;
                 if (var->varno == ctx->relid)
                 {
-                    if (!isCatalogVar(ctx->coltypes[var->varattno-1]))
+                    if (!isCatalogVar(ctx->columns[var->varattno-1].type))
                         return true;
                 }
             }
@@ -193,7 +193,7 @@ isCatalogJoinEC (EquivalenceClass *ec, HvaultTableInfo const *table)
             Var *var = (Var *) em->em_expr;
             if (var->varno == table->relid)
             {
-                if (isCatalogVar(table->coltypes[var->varattno-1]))
+                if (isCatalogVar(table->columns[var->varattno-1].type))
                 {
                     if (catalog_var == NULL)
                     {
@@ -307,8 +307,7 @@ getGeometryOper (HvaultQualAnalyzer analyzer, Oid opno)
 }
 
 static bool
-isFootprintOpArgs (Expr *varnode, 
-                   Expr *arg, 
+isFootprintOpArgs (Expr *varnode,  
                    const HvaultTableInfo *table, 
                    HvaultColumnType *coltype)
 {
@@ -321,7 +320,7 @@ isFootprintOpArgs (Expr *varnode,
     if (var->varno != table->relid)
         return false;
 
-    *coltype = table->coltypes[var->varattno - 1];
+    *coltype = table->columns[var->varattno - 1].type;
     if (*coltype != HvaultColumnPoint && *coltype != HvaultColumnFootprint)
         return false;
 
@@ -350,12 +349,12 @@ isFootprintOp (Expr *expr,
 
     first = linitial(opexpr->args);
     second = lsecond(opexpr->args);
-    if (isFootprintOpArgs(first, second, analyzer->table, &qual->coltype))
+    if (isFootprintOpArgs(first, analyzer->table, &qual->coltype))
     {
         qual->var = (Var *) first;
         qual->arg = second;
     }
-    else if (isFootprintOpArgs(second, first, analyzer->table, &qual->coltype))
+    else if (isFootprintOpArgs(second, analyzer->table, &qual->coltype))
     {
         qual->var = (Var *) second;
         qual->arg = first;
@@ -553,4 +552,67 @@ hvaultDeparseQual (HvaultQual * qual, HvaultDeparseContext * ctx)
             ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
                     errmsg("undefined HvaultQual type")));
     }
+}
+
+typedef struct 
+{
+    void (*cb)(Var *var, void * expr);
+    void * arg;
+    Index relid;
+} UsedColumnsWakerContext;
+
+static bool
+usedColumnsWalker (Node *node, UsedColumnsWakerContext * cxt)
+{
+    if (node == NULL)
+        return false;
+
+    switch (nodeTag(node))
+    {
+        case T_Var:
+        {
+            Var *var = (Var *) node;
+            if (var->varno == cxt->relid)
+            {
+                cxt->cb(var, cxt->arg);
+            }
+        }
+            break;
+        case T_RestrictInfo:
+        {
+            RestrictInfo * rinfo = (RestrictInfo *) node;
+            return usedColumnsWalker((Node *) rinfo->clause, cxt);
+        }
+        case T_EquivalenceClass:
+        {
+            EquivalenceClass * ec = (EquivalenceClass *) node;
+            ListCell * l;
+
+            if (bms_is_member(cxt->relid, ec->ec_relids))
+            {
+                foreach(l, ec->ec_members)
+                {
+                    EquivalenceMember * em = lfirst(l);
+                    usedColumnsWalker((Node *) em->em_expr, cxt);
+                }
+            }
+            return false;
+        }
+        default:
+            break;
+    }
+    return expression_tree_walker(node, usedColumnsWalker, (void *) cxt);
+}
+
+void 
+hvaultAnalyzeUsedColumns (Node * expr, 
+                          Index relid, 
+                          void (*cb)(Var *var, void * arg),
+                          void * arg)
+{
+    UsedColumnsWakerContext cxt;
+    cxt.relid = relid;
+    cxt.cb = cb;
+    cxt.arg = arg;
+    usedColumnsWalker(expr, &cxt);
 }

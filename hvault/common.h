@@ -31,23 +31,22 @@
 #include <utils/rel.h>
 #include <utils/syscache.h>
 #include <utils/timestamp.h>
+#include <utils/varbit.h>
 
 #define HVAULT_TUPLES_PER_FILE (double)(2030*1354)
 
 typedef enum HvaultColumnType
 {
     HvaultColumnNull,
-    HvaultColumnPoint,
-    HvaultColumnFootprint,
-    HvaultColumnFileIdx,
+    HvaultColumnIndex,
     HvaultColumnLineIdx,
     HvaultColumnSampleIdx,
-    HvaultColumnTime,
-    HvaultColumnFloatVal,
-    HvaultColumnInt8Val,
-    HvaultColumnInt16Val,
-    HvaultColumnInt32Val,
-    HvaultColumnInt64Val
+    HvaultColumnFootprint,
+    HvaultColumnPoint,
+    HvaultColumnDataset,
+    HvaultColumnCatalog,
+
+    HvaultColumnNumTypes
 } HvaultColumnType;
 
 typedef enum 
@@ -78,14 +77,42 @@ typedef enum
     HvaultGeomNumAllOpers
 } HvaultGeomOperator;
 
+typedef enum 
+{
+    HvaultInvalidDataType = -1,
+
+    HvaultInt8 = 0,
+    HvaultUInt8,
+    HvaultInt16,
+    HvaultUInt16,
+    HvaultInt32,
+    HvaultUInt32,
+    HvaultInt64,
+    HvaultUInt64,
+
+    HvaultFloat32,
+    HvaultFloat64,
+
+    HvaultBitmap,
+
+    HvaultNumDatatypes
+} HvaultDataType;
+
+extern const int hvaultDatatypeSize[HvaultNumDatatypes];
 extern char const * hvaultGeomopstr[HvaultGeomNumAllOpers];
+
+typedef struct 
+{
+    HvaultColumnType type;
+    char const * cat_name;
+} HvaultColumnInfo;
 
 typedef struct 
 {
     Index relid;      
     int natts;
-    HvaultColumnType *coltypes;
+    HvaultColumnInfo * columns;
     char const * catalog;
 } HvaultTableInfo;
 
-#endif
+#endif /* _COMMON_H_ */

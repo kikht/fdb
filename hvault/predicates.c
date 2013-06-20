@@ -1,7 +1,7 @@
-#include "hdf.h"
+#include "predicates.h"
 
 static inline bool 
-overlaps_op(float latmin, 
+Overlaps_op(float latmin, 
             float latmax, 
             float lonmin, 
             float lonmax, 
@@ -12,7 +12,7 @@ overlaps_op(float latmin,
 }
 
 static inline bool 
-contains_op(float latmin, 
+Contains_op(float latmin, 
             float latmax, 
             float lonmin, 
             float lonmax, 
@@ -23,7 +23,7 @@ contains_op(float latmin,
 }
 
 static inline bool 
-within_op(float latmin, 
+Within_op(float latmin, 
           float latmax, 
           float lonmin, 
           float lonmax, 
@@ -34,7 +34,7 @@ within_op(float latmin,
 }
 
 static inline bool 
-equals_op(float latmin, 
+Same_op(float latmin, 
           float latmax, 
           float lonmin, 
           float lonmax, 
@@ -45,122 +45,170 @@ equals_op(float latmin,
 }
 
 static inline bool 
-overleft_op(float latmin, 
+Overleft_op(float latmin, 
             float latmax, 
             float lonmin, 
             float lonmax, 
             GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmax <= arg->xmax;
 }
 
 static inline bool 
-left_op(float latmin, 
+Left_op(float latmin, 
         float latmax, 
         float lonmin, 
         float lonmax, 
         GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmax < arg->xmin;
 }
 
 static inline bool 
-right_op(float latmin, 
+Right_op(float latmin, 
          float latmax, 
          float lonmin, 
          float lonmax, 
          GBOX const *arg)
 {
+    (void)(latmax);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmin > arg->xmax;
 }
 
 static inline bool 
-overright_op(float latmin, 
+Overright_op(float latmin, 
              float latmax, 
              float lonmin, 
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmax);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmin >= arg->xmin;
 }
 
 static inline bool 
-overbelow_op(float latmin, 
+Overbelow_op(float latmin, 
              float latmax, 
              float lonmin, 
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmin);
+
     return lonmax <= arg->ymax;
 }
 
 static inline bool 
-below_op(float latmin, 
+Below_op(float latmin, 
          float latmax, 
          float lonmin, 
          float lonmax, 
          GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmin);
+
     return lonmax < arg->ymin;
 }
 
 static inline bool 
-above_op(float latmin, 
+Above_op(float latmin, 
          float latmax, 
          float lonmin, 
          float lonmax, 
          GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmax);
+
     return lonmin > arg->ymax;
 }
 
 static inline bool 
-overabove_op(float latmin, 
+Overabove_op(float latmin, 
              float latmax, 
              float lonmin, 
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmax);
+
     return lonmin >= arg->ymin;
 }
 
 static inline bool 
-commleft_op(float latmin, 
+CommLeft_op(float latmin, 
             float latmax, 
             float lonmin, 
             float lonmax, 
             GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmax >= arg->xmax;
 }
 
 static inline bool 
-commright_op(float latmin, 
+CommRight_op(float latmin, 
              float latmax, 
              float lonmin, 
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmax);
+    (void)(lonmin);
+    (void)(lonmax);
+
     return latmin <= arg->xmin;
 }
 
 static inline bool 
-commbelow_op(float latmin, 
+CommBelow_op(float latmin, 
              float latmax, 
              float lonmin, 
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmin);
+
     return lonmax >= arg->ymax;
 }
 
 static inline bool 
-commabove_op(float latmin, 
+CommAbove_op(float latmin, 
              float latmax, 
              float lonmin, 
              float lonmax, 
              GBOX const *arg)
 {
+    (void)(latmin);
+    (void)(latmax);
+    (void)(lonmax);
+
     return lonmin <= arg->ymin;
 }
 
@@ -169,32 +217,6 @@ typedef bool (*geom_predicate_op)(float latmin,
                                   float lonmin,
                                   float lonmax,
                                   GBOX const *arg);
-
-#define point_predicate_template(op, scan, arg, neg, n, sel, res) \
-{ \
-    size_t i, j; \
-    if (sel == NULL) \
-    { \
-        for (i = 0, j = 0; i < n; i++) \
-        { \
-            float lat = ((float *) scan->lat->cur)[i]; \
-            float lon = ((float *) scan->lon->cur)[i]; \
-            if (op(lat, lat, lon, lon, arg) ^ neg) \
-                res[j++] = i; \
-        } \
-    } \
-    else \
-    { \
-        for (i = 0, j = 0; i < n; i++) \
-        { \
-            float lat = ((float *) scan->lat->cur)[sel[i]]; \
-            float lon = ((float *) scan->lon->cur)[sel[i]]; \
-            if (op(lat, lat, lon, lon, arg) ^ neg) \
-                res[j++] = sel[i]; \
-        } \
-    } \
-    return j; \
-} 
 
 #define min(a, b) ((a < b) ? a : b) 
 #define max(a, b) ((a < b) ? b : a) 
@@ -207,190 +229,133 @@ typedef bool (*geom_predicate_op)(float latmin,
     maxcd = max(c, d); \
     minval = min(minab, mincd); \
     maxval = max(maxab, maxcd); \
-}
+} while(0)
 
+#define compact_bounds \
+{ \
+    float ul, ur, lr, ll; \
+    size_t pos = cur + cur / data->stride; \
+  \
+    ul = data->lat[pos]; \
+    ur = data->lat[pos + 1]; \
+    lr = data->lat[pos + data->stride + 2]; \
+    ll = data->lat[pos + data->stride + 1]; \
+    bounds(ul, ur, lr, ll, latmin, latmax); \
+ \
+    ul = data->lon[pos]; \
+    ur = data->lon[pos + 1]; \
+    lr = data->lon[pos + data->stride + 2]; \
+    ll = data->lon[pos + data->stride + 1]; \
+    bounds(ul, ur, lr, ll, lonmin, lonmax); \
+} while(0)
 
-#define footprint_predicate_template(op, scan, arg, neg, n, sel, res) \
+#define simple_bounds \
+{ \
+    float ul, ur, lr, ll; \
+  \
+    ul = data->lat[4*cur + 0]; \
+    ur = data->lat[4*cur + 1]; \
+    lr = data->lat[4*cur + 2]; \
+    ll = data->lat[4*cur + 3]; \
+    bounds(ul, ur, lr, ll, latmin, latmax); \
+  \
+    ul = data->lon[4*cur + 0]; \
+    ur = data->lon[4*cur + 1]; \
+    lr = data->lon[4*cur + 2]; \
+    ll = data->lon[4*cur + 3]; \
+    bounds(ul, ur, lr, ll, lonmin, lonmax); \
+} while(0)
+
+#define point_bounds \
+{ \
+    float lat, lon; \
+  \
+    lat = data->point_lat[cur]; \
+    lon = data->point_lon[cur]; \
+  \
+    latmin = latmax = lat; \
+    lonmin = lonmax = lon; \
+} while(0)
+
+#define cur_simple size_t cur = i
+#define cur_indexed size_t cur = idx[i]
+
+#define predicate_cycle(cur, my_bounds, op, neg) \
+{ \
+    for (i = 0, j = 0; i < len; i++) \
+    { \
+        float latmin, latmax, lonmin, lonmax; \
+        cur; \
+        my_bounds; \
+        if (op(latmin, latmax, lonmin, lonmax, arg) ^ (neg)) \
+            idx[j++] = i; \
+    } \
+} while(0)
+
+#define positive false 
+#define negative true
+
+#define predicate_template(src_type, op, neg) \
+static size_t op ## _ ## src_type ## _ ## neg (  \
+    size_t * idx,  \
+    size_t len,  \
+    HvaultFileChunk const * const data, \
+    GBOX const * const arg) \
 { \
     size_t i, j; \
-    float latmin, latmax, lonmin, lonmax; \
-    if (sel == NULL) \
+    if (len == data->size) \
     { \
-        for (i = 0, j = 0; i < n; i++) \
-        { \
-            bounds(scan->file.prevbrdlat[i],  \
-                   scan->file.prevbrdlat[i+1], \
-                   scan->file.nextbrdlat[i], \
-                   scan->file.nextbrdlat[i+1], \
-                   latmin, \
-                   latmax); \
-            bounds(scan->file.prevbrdlon[i],  \
-                   scan->file.prevbrdlon[i+1], \
-                   scan->file.nextbrdlon[i], \
-                   scan->file.nextbrdlon[i+1], \
-                   lonmin, \
-                   lonmax); \
-            if (op(latmin, latmax, lonmin, lonmax, arg) ^ neg) \
-                res[j++] = i; \
-        } \
+        /* Use full dataset */ \
+        predicate_cycle(cur_simple, src_type ## _bounds, op ## _op, neg); \
     } \
     else \
     { \
-        for (i = 0, j = 0; i < n; i++) \
-        { \
-            bounds(scan->file.prevbrdlat[sel[i]],  \
-                   scan->file.prevbrdlat[sel[i]+1], \
-                   scan->file.nextbrdlat[sel[i]], \
-                   scan->file.nextbrdlat[sel[i]+1], \
-                   latmin, \
-                   latmax); \
-            bounds(scan->file.prevbrdlon[sel[i]],  \
-                   scan->file.prevbrdlon[sel[i]+1], \
-                   scan->file.nextbrdlon[sel[i]], \
-                   scan->file.nextbrdlon[sel[i]+1], \
-                   lonmin, \
-                   lonmax); \
-            if (op(latmin, latmax, lonmin, lonmax, arg) ^ neg) \
-                res[j++] = sel[i]; \
-        } \
+        /* Use selected indices */ \
+        predicate_cycle(cur_indexed, src_type ## _bounds, op ## _op, neg); \
     } \
     return j; \
 } 
 
-int
-hvaultGeomPredicate(HvaultColumnType coltype,
-                    HvaultGeomOperator op,
-                    bool neg,
-                    HvaultExecState const *scan,
-                    GBOX const * arg,
-                    int n,
-                    size_t const *sel,
-                    size_t *res)
-{
-    switch (coltype)
-    {
-        case HvaultColumnPoint:
-        {
-            switch (op)
-            {
-                case HvaultGeomOverlaps:
-                    point_predicate_template(overlaps_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomContains:
-                    point_predicate_template(contains_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomWithin:
-                    point_predicate_template(within_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomSame:
-                    point_predicate_template(equals_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomOverleft:
-                    point_predicate_template(overleft_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomOverright:
-                    point_predicate_template(overright_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomOverabove:
-                    point_predicate_template(overabove_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomOverbelow:
-                    point_predicate_template(overbelow_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomLeft:
-                    point_predicate_template(left_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomRight:
-                    point_predicate_template(right_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomAbove:
-                    point_predicate_template(above_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomBelow:
-                    point_predicate_template(below_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomCommLeft:
-                    point_predicate_template(commleft_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomCommRight:
-                    point_predicate_template(commright_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomCommAbove:
-                    point_predicate_template(commabove_op,
-                                             scan, arg, neg, n, sel, res);
-                case HvaultGeomCommBelow:
-                    point_predicate_template(commbelow_op,
-                                             scan, arg, neg, n, sel, res);
-                default:
-                    ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                                    errmsg("Unknown geometry operator %d", op)));
-                    return -1;
-            }
-        }
-        break;
-        case HvaultColumnFootprint:
-        {
-            switch (op)
-            {
-                case HvaultGeomOverlaps:
-                    footprint_predicate_template(overlaps_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomContains:
-                    footprint_predicate_template(contains_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomWithin:
-                    footprint_predicate_template(within_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomSame:
-                    footprint_predicate_template(equals_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomOverleft:
-                    footprint_predicate_template(overleft_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomOverright:
-                    footprint_predicate_template(overright_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomOverabove:
-                    footprint_predicate_template(overabove_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomOverbelow:
-                    footprint_predicate_template(overbelow_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomLeft:
-                    footprint_predicate_template(left_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomRight:
-                    footprint_predicate_template(right_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomAbove:
-                    footprint_predicate_template(above_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomBelow:
-                    footprint_predicate_template(below_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomCommLeft:
-                    footprint_predicate_template(commleft_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomCommRight:
-                    footprint_predicate_template(commright_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomCommAbove:
-                    footprint_predicate_template(commabove_op,
-                                                 scan, arg, neg, n, sel, res);
-                case HvaultGeomCommBelow:
-                    footprint_predicate_template(commbelow_op,
-                                                 scan, arg, neg, n, sel, res);
-                default:
-                    ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                                    errmsg("Unknown geometry operator %d", op)));
-                    return -1;
-            }
-        }
-        break;
-        default:
-            ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                            errmsg("Unknown column type %d", coltype)));
-            return -1;   
-    }
-}               
+#define predicate_multitemplate(op) \
+    predicate_template(simple, op, positive) \
+    predicate_template(simple, op, negative) \
+    predicate_template(compact, op, positive) \
+    predicate_template(compact, op, negative) \
+    predicate_template(point, op, positive) \
+    predicate_template(point, op, negative) 
 
+#define operators_list(item) \
+    item(Overlaps) \
+    item(Contains) \
+    item(Within) \
+    item(Same) \
+    item(Overleft) \
+    item(Overright) \
+    item(Overabove) \
+    item(Overbelow) \
+    item(Left) \
+    item(Right) \
+    item(Above) \
+    item(Below) \
+    item(CommLeft) \
+    item(CommRight) \
+    item(CommAbove) \
+    item(CommBelow) 
+
+operators_list(predicate_multitemplate)
+
+#define predicate_name(op, src_type) \
+    op ## _ ## src_type ## _ ## positive, \
+    op ## _ ## src_type ## _ ## negative, 
+
+#define point_predicate_name(op) predicate_name(op, point)
+HvaultPredicate hvaultPredicatesPoint[HvaultGeomNumAllOpers * 2] = 
+    { operators_list(point_predicate_name) };
+    
+#define simple_predicate_name(op) predicate_name(op, simple)
+HvaultPredicate hvaultPredicatesSimple[HvaultGeomNumAllOpers * 2] = 
+    { operators_list(simple_predicate_name) };
+
+#define compact_predicate_name(op) predicate_name(op, compact)
+HvaultPredicate hvaultPredicatesCompact[HvaultGeomNumAllOpers * 2] = 
+    { operators_list(compact_predicate_name) };

@@ -37,5 +37,6 @@ BEGIN
 		size      int8      NOT NULL
 	)';
 	EXECUTE 'CREATE INDEX ON '||quote_ident($1)||' (starttime)';
+    EXECUTE 'CREATE INDEX ON '||quote_ident($1)||' (footprint)';
 END;
 $$ LANGUAGE PLPGSQL;

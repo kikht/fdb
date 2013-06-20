@@ -25,25 +25,15 @@ deparseVar(Var *node, HvaultDeparseContext *ctx)
     if (node->varno == ctx->table->relid)
     {
         /* Catalog column */
-        HvaultColumnType type;
-        char *colname = NULL;
+        char const *colname = NULL;
         
         Assert(node->varattno > 0);
         Assert(node->varattno <= ctx->table->natts);
+        Assert(ctx->table->columns[node->varattno-1].type 
+               == HvaultColumnCatalog);
 
-        type = ctx->table->coltypes[node->varattno-1];
-        switch(type)
-        {
-            case HvaultColumnTime:
-                colname = "starttime";
-                
-            break;
-            case HvaultColumnFileIdx:
-                colname = "file_id";
-            break;
-            default:
-                elog(ERROR, "unsupported local column type: %d", type);
-        }
+        colname = ctx->table->columns[node->varattno-1].cat_name;
+        Assert(colname);
         appendStringInfoString(&ctx->query, quote_identifier(colname));
     }
     else
@@ -526,7 +516,8 @@ hvaultDeparseContextInit (HvaultDeparseContext  * ctx,
 }
 
 /* Frees all resources allocated by context. It's up to caller to pfree 
- * the struct itself (so it is possible to allocate struct on stack)
+ * the struct itself (so it is possible to allocate struct on stack, 
+ * or reinit this context later)
  */
 void 
 hvaultDeparseContextFree (HvaultDeparseContext * ctx)
@@ -534,6 +525,7 @@ hvaultDeparseContextFree (HvaultDeparseContext * ctx)
     list_free(ctx->fdw_expr);
     ctx->table = NULL;
     pfree(ctx->query.data);
+    ctx->query.data = NULL;
 }
 
 

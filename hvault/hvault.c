@@ -30,6 +30,9 @@ extern bool             hvaultAnalyze    (Relation                relation,
 PG_MODULE_MAGIC;
 #endif
 
+const int hvaultDatatypeSize[HvaultNumDatatypes] = 
+    {1, 1, 2, 2, 4, 4, 8, 8, 4, 8, -1};
+
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
  * to my callback routines.
@@ -48,7 +51,7 @@ hvault_fdw_handler(PG_FUNCTION_ARGS)
     fdwroutine->IterateForeignScan  = hvaultIterate;
     fdwroutine->ReScanForeignScan   = hvaultReScan;
     fdwroutine->EndForeignScan      = hvaultEnd;
-    fdwroutine->AnalyzeForeignTable = hvaultAnalyze;
+    // fdwroutine->AnalyzeForeignTable = hvaultAnalyze;
 
 #ifdef USE_ASSERT_CHECKING
     assert_enabled = true;

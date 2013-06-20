@@ -1,0 +1,86 @@
+COLUMN TYPES
+
+Special
+Columns of these types do not require any data to be passed from file-driver.
+
+* Null - always null. Used to skip columns that are not used in query.
+
+Catalog-based - values of this columns are computed with catalog metadata only. 
+* file_id   (int32)     - id of catalog entry, that provided current row
+* starttime (timestamp) - starttime of entry in catalog
+* stoptime  (timestamp) - stoptime of enty in catalog
+
+Indices
+* idx        (int32) - index of current pixel/item in current catalog entry
+* line_idx   (int32) - index of current line in current catalog entry
+* sample_idx (int32) - index of current sample within line 
+                       in current catalog entry
+
+File data
+
+Values of these columns are read from files. There are three states of data:
+1) Source data, as it goes from underlying file format library. 
+   It is usually plain arrays of some simple values like ints or floats
+2) Intermediate representation, used for passing data for file-driver to 
+   execute layer.
+3) Destanation column type, that is passed to Postgres.
+
+Geolocation
+
+All destanation values are geometries. Intermediate representation is described.
+Conversion from source data is up to implementation. Execution layer converts
+intermediate representation to PostGIS's geometry values.
+These columns are also subject to geomerty predicate execution.
+
+* compact footprint - footprint for grided data.
+    For each coordinate (lat/lon) array A of
+    (chunk_lines + 1) * (chunk_samples + 1) float values.
+    (A[i,j], A[i+1,j], A[i+1,j+1], A[i,j+1]) - corners of (i,j)-pixel
+    In case of swath data, we process whole scan in one chunk, so every chunk 
+    is a small grid.
+
+* simple footprint - footprint for point data.
+    For each of lat/lon array A of (chunk_size * 4) floats.
+    (A[i,0], A[i,1], A[i,2], A[i,3]) - corners of foorprint for i'th point
+
+* simple point - point data. For each of lat/lon array A of coordinate values.
+
+TODO: Maybe it' better to perform generic handling of incomplete/oversized 
+      geolocation data, like interpolation. However these procedures require
+      knowledge of swath structure.
+
+Scientific data
+
+These columns represent single layer values in underlying files. The main idea 
+here is to merge source data representation with intermediate representation and 
+perform all necessary conversions in executor layer. 
+
+The conversion is performed in two stages. First we compute the pointer into
+source data array that points to current pixel. Second we perform necessary 
+data item scaling, NULL-detection and conversion.
+
+There are three cases in the first stage:
+* simple     - pointer = base + idx * sizeof(src_type)
+               Useful for the most full-sized datasets
+
+* const      - pointer = base
+               We precompute Datum value when chunk is read and don't touch it 
+               during iteration. Useful for values that are constant for each
+               scan-line.
+
+* repeatable - pointer =  ((idx / line) / vfactor * line + idx % line) / hfactor
+               Maps one value from source array to patch (hfactor x vfactor)
+               in the dest representation. Useful for mixing datasets of 
+               different spatial resolution in one table.
+
+After the first stage we perform NULL-detection. sizeof(src_type) bytes starting
+from computed pointer are compared to fill_value provided by file-driver. 
+If they are equal we use NULL as column value. Otherwise there are two 
+possibilites.
+* direct - value is simply converted with corresponding *GetDatum function
+* scaled float - value is converted to double and scaling is performed.
+                 dest = src / scale - offset
+
+
+( {u}int{8,16,32,64}, float{32,64}, bitfield )
+             
