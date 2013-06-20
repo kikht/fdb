@@ -47,7 +47,6 @@ typedef struct
 static ExecState * makeExecState ()
 {
     int i;
-    POINTARRAY * ptarray;
     ExecState * state;
 
     state = palloc0(sizeof(ExecState));
@@ -521,26 +520,32 @@ static void
 fillPixelColumns (ExecState *state)
 {
     ListCell *l;
+    size_t cur_idx;
+
+    if (state->sel_size != state->chunk.size)
+        cur_idx = state->sel[state->cur_pos];
+    else 
+        cur_idx = state->cur_pos;
 
     if (state->col_indices[HvaultColumnIndex] >= 0)
     {
         state->nulls[state->col_indices[HvaultColumnIndex]] = false;
         state->values[state->col_indices[HvaultColumnIndex]] = 
-            state->chunk_start + state->cur_pos;
+            state->chunk_start + cur_idx;
     }
 
     if (state->col_indices[HvaultColumnLineIdx] >= 0)
     {
         state->nulls[state->col_indices[HvaultColumnLineIdx]] = false;
         state->values[state->col_indices[HvaultColumnLineIdx]] = 
-            (state->chunk_start + state->cur_pos) / state->chunk.stride;
+            (state->chunk_start + cur_idx) / state->chunk.stride;
     }
 
     if (state->col_indices[HvaultColumnSampleIdx] >= 0)
     {
         state->nulls[state->col_indices[HvaultColumnSampleIdx]] = false;
         state->values[state->col_indices[HvaultColumnSampleIdx]] = 
-            state->cur_pos % state->chunk.stride;
+            cur_idx % state->chunk.stride;
     }
 
     if (state->col_indices[HvaultColumnFootprint] >= 0)
@@ -551,8 +556,8 @@ fillPixelColumns (ExecState *state)
         {
             case HvaultGeolocationSimple:
             {
-                float const * cur_lat = state->chunk.lat + state->cur_pos * 4;
-                float const * cur_lon = state->chunk.lon + state->cur_pos * 4;   
+                float const * cur_lat = state->chunk.lat + cur_idx * 4;
+                float const * cur_lon = state->chunk.lon + cur_idx * 4;   
                 data[0] = cur_lat[0]; 
                 data[1] = cur_lon[0]; 
                 data[2] = cur_lat[1]; 
@@ -567,16 +572,18 @@ fillPixelColumns (ExecState *state)
             break;
             case HvaultGeolocationCompact:
             {
-                float const * cur_lat = state->chunk.lat + state->cur_pos;
-                float const * cur_lon = state->chunk.lon + state->cur_pos;
+                size_t const line = state->chunk.stride;
+                size_t const idx = cur_idx + cur_idx / line;
+                float const * cur_lat = state->chunk.lat + idx;
+                float const * cur_lon = state->chunk.lon + idx;
                 data[0] = cur_lat[0]; 
                 data[1] = cur_lon[0]; 
                 data[2] = cur_lat[1]; 
                 data[3] = cur_lon[1]; 
-                data[4] = cur_lat[state->chunk.stride+1]; 
-                data[5] = cur_lon[state->chunk.stride+1]; 
-                data[6] = cur_lat[state->chunk.stride]; 
-                data[7] = cur_lon[state->chunk.stride]; 
+                data[4] = cur_lat[state->chunk.stride+2]; 
+                data[5] = cur_lon[state->chunk.stride+2]; 
+                data[6] = cur_lat[state->chunk.stride+1]; 
+                data[7] = cur_lon[state->chunk.stride+1]; 
                 data[8] = cur_lat[0]; 
                 data[9] = cur_lon[0]; 
             }
@@ -599,8 +606,8 @@ fillPixelColumns (ExecState *state)
            However it is a very hot place here */
         GSERIALIZED *ret;
         double *data = (double *) state->point->point->serialized_pointlist;
-        data[0] = state->chunk.point_lat[state->cur_pos];
-        data[1] = state->chunk.point_lon[state->cur_pos];
+        data[0] = state->chunk.point_lat[cur_idx];
+        data[1] = state->chunk.point_lon[cur_idx];
         ret = gserialized_from_lwgeom((LWGEOM *) state->point, true, NULL);
         state->nulls[state->col_indices[HvaultColumnPoint]] = false;
         state->values[state->col_indices[HvaultColumnPoint]] = 
@@ -614,14 +621,14 @@ fillPixelColumns (ExecState *state)
         switch (layer->type)
         {
             case HvaultLayerSimple:
-                idx = state->cur_pos;
+                idx = cur_idx;
                 break;
             case HvaultLayerChunked:
             {
                 size_t line = state->chunk.stride;
                 size_t vfactor = layer->vfactor;
                 size_t hfactor = layer->hfactor;
-                idx = state->cur_pos;
+                idx = cur_idx;
                 idx = ((idx / line) / vfactor * line + idx % line ) / hfactor;
             }
                 break;

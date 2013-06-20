@@ -234,17 +234,18 @@ typedef bool (*geom_predicate_op)(float latmin,
 #define compact_bounds \
 { \
     float ul, ur, lr, ll; \
+    size_t pos = cur + cur / data->stride; \
   \
-    ul = data->lat[cur]; \
-    ur = data->lat[cur + 1]; \
-    lr = data->lat[cur + data->stride + 1]; \
-    ll = data->lat[cur + data->stride]; \
+    ul = data->lat[pos]; \
+    ur = data->lat[pos + 1]; \
+    lr = data->lat[pos + data->stride + 2]; \
+    ll = data->lat[pos + data->stride + 1]; \
     bounds(ul, ur, lr, ll, latmin, latmax); \
  \
-    ul = data->lon[cur]; \
-    ur = data->lon[cur + 1]; \
-    lr = data->lon[cur + data->stride + 1]; \
-    ll = data->lon[cur + data->stride]; \
+    ul = data->lon[pos]; \
+    ur = data->lon[pos + 1]; \
+    lr = data->lon[pos + data->stride + 2]; \
+    ll = data->lon[pos + data->stride + 1]; \
     bounds(ul, ur, lr, ll, lonmin, lonmax); \
 } while(0)
 
