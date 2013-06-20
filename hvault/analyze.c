@@ -567,13 +567,39 @@ usedColumnsWalker (Node *node, UsedColumnsWakerContext * cxt)
     if (node == NULL)
         return false;
 
-    if (IsA(node, Var))
+    switch (nodeTag(node))
     {
-        Var *var = (Var *) node;
-        if (var->varno == cxt->relid)
+        case T_Var:
         {
-            cxt->cb(var, cxt->arg);
+            Var *var = (Var *) node;
+            if (var->varno == cxt->relid)
+            {
+                cxt->cb(var, cxt->arg);
+            }
         }
+            break;
+        case T_RestrictInfo:
+        {
+            RestrictInfo * rinfo = (RestrictInfo *) node;
+            return usedColumnsWalker((Node *) rinfo->clause, cxt);
+        }
+        case T_EquivalenceClass:
+        {
+            EquivalenceClass * ec = (EquivalenceClass *) node;
+            ListCell * l;
+
+            if (bms_is_member(cxt->relid, ec->ec_relids))
+            {
+                foreach(l, ec->ec_members)
+                {
+                    EquivalenceMember * em = lfirst(l);
+                    usedColumnsWalker((Node *) em->em_expr, cxt);
+                }
+            }
+            return false;
+        }
+        default:
+            break;
     }
     return expression_tree_walker(node, usedColumnsWalker, (void *) cxt);
 }
