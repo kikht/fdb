@@ -54,40 +54,57 @@ CREATE FOREIGN TABLE test_catalog (
     footprint geometry    OPTIONS (type 'footprint'),
 
     Surface_Reflectance_Band_1   float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 1'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 1'),
     Surface_Reflectance_Band_2   float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 2'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 2'),
     Surface_Reflectance_Band_3   float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 3'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 3'),
     Surface_Reflectance_Band_4   float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 4'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 4'),
     Surface_Reflectance_Band_5   float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 5'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 5'),
     Surface_Reflectance_Band_6   float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 6'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 6'),
     Surface_Reflectance_Band_7   float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 7'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 7'),
     Surface_Reflectance_Band_8   float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 8'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 8'),
     Surface_Reflectance_Band_9   float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 9'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 9'),
     Surface_Reflectance_Band_10  float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 10'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 10'),
     Surface_Reflectance_Band_11  float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 11'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 11'),
     Surface_Reflectance_Band_12  float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 12'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 12'),
     Surface_Reflectance_Band_13  float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 13'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 13'),
     Surface_Reflectance_Band_14  float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 14'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 14'),
     Surface_Reflectance_Band_15  float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 15'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 15'),
     Surface_Reflectance_Band_16  float8  
-        OPTIONS (type 'dataset', dataset '1km Surface Reflectance Band 16'),
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Surface Reflectance Band 16'),
 
     Reflectance_Band_Quality     int4    
-        OPTIONS (type 'dataset', dataset '1km Reflectance Band Quality')
+        OPTIONS (type 'dataset', cat_name 'filename', 
+                 dataset '1km Reflectance Band Quality')
 ) SERVER hvault_service
   OPTIONS (catalog 'hdf_catalog',
            shift_longitude 'true');
