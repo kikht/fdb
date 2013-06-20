@@ -46,3 +46,10 @@ defFindByName (List * list, char const * key)
     }    
     return NULL;
 }
+
+char *
+defFindStringByName (List *list, const char *key)
+{
+    DefElem * def = defFindByName(list, key);
+    return def == NULL ? NULL : defGetString(def);
+}

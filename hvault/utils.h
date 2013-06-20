@@ -26,4 +26,7 @@ bool bms_equal_any(Relids relids, List *relids_list);
 /* Finds DefElem with specified name in List */
 DefElem * defFindByName (List * list, char const * key);
 
+/* Finds DefElem with specified name in List and extracts String from it */
+char * defFindStringByName (List * list, char const * key);
+
 #endif /* _UTILS_H_ */

@@ -77,6 +77,28 @@ typedef enum
     HvaultGeomNumAllOpers
 } HvaultGeomOperator;
 
+typedef enum 
+{
+    HvaultInvalidDataType = -1,
+
+    HvaultInt8 = 0,
+    HvaultUInt8,
+    HvaultInt16,
+    HvaultUInt16,
+    HvaultInt32,
+    HvaultUInt32,
+    HvaultInt64,
+    HvaultUInt64,
+
+    HvaultFloat32,
+    HvaultFloat64,
+
+    HvaultBitmap,
+
+    HvaultNumDatatypes
+} HvaultDataType;
+
+extern const int hvaultDatatypeSize[HvaultNumDatatypes];
 extern char const * hvaultGeomopstr[HvaultGeomNumAllOpers];
 
 typedef struct 

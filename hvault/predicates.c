@@ -1,4 +1,3 @@
-#include "hdf.h"
 #include "predicates.h"
 
 static inline bool 

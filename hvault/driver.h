@@ -9,11 +9,10 @@ typedef struct HvaultFileChunk HvaultFileChunk;
 
 typedef struct 
 {
-    /* init routines (hashtables, memctx,...)
-       get geotype*/
-    HvaultFileDriver * (* init) ();
+    HvaultFileDriver * (* init) (List        * table_options, 
+                                 MemoryContext memctx);
     void (* add_column) (HvaultFileDriver        * driver,
-                         AttrNumber                attno,
+                         Form_pg_attribute         attr,
                          List                    * options);
     void (* open      ) (HvaultFileDriver        * driver, 
                          HvaultCatalogItem const * products);
@@ -31,27 +30,14 @@ typedef enum
 
 typedef enum  
 {
-    HvaultLayerConst,
+    HvaultInvalidLayerType = -1,
+
+    HvaultLayerConst = 0,
     HvaultLayerSimple,
-    HvaultLayerChunked
+    HvaultLayerChunked,
+
+    HvaultLayerNumTypes
 } HvaultLayerType;
-
-typedef enum 
-{
-    HvaultInt8,
-    HvaultInt16,
-    HvaultInt32,
-    HvaultInt64,
-    HvaultFloat32,
-    HvaultFloat64,
-
-    HvaultBitmap,
-
-    HvaultUInt8,
-    HvaultUInt16,
-    HvaultUInt32,
-    HvaultUInt64,
-} HvaultDataType;
 
 typedef struct HvaultFileLayer
 {
@@ -60,17 +46,17 @@ typedef struct HvaultFileLayer
     void * temp;
     double scale, offset;
 
-    int16_t colnum;
+    AttrNumber colnum;
     HvaultLayerType type;
     HvaultDataType src_type;
     size_t item_size;
-    size_t hfactor, vfactor;
+    int hfactor, vfactor;
 } HvaultFileLayer;
 
 struct HvaultFileChunk 
 {
     List * const_layers;
-    List * layers; /* Null-terminated layers array */
+    List * layers; 
 
     float * lat;
     float * lon;
@@ -83,7 +69,7 @@ struct HvaultFileChunk
 
 struct HvaultFileDriver
 {
-    HvaultFileDriverMethods * methods;
+    HvaultFileDriverMethods const * methods;
     HvaultGeolocationType geotype;
 };
 

@@ -307,8 +307,7 @@ getGeometryOper (HvaultQualAnalyzer analyzer, Oid opno)
 }
 
 static bool
-isFootprintOpArgs (Expr *varnode, 
-                   Expr *arg, 
+isFootprintOpArgs (Expr *varnode,  
                    const HvaultTableInfo *table, 
                    HvaultColumnType *coltype)
 {
@@ -350,12 +349,12 @@ isFootprintOp (Expr *expr,
 
     first = linitial(opexpr->args);
     second = lsecond(opexpr->args);
-    if (isFootprintOpArgs(first, second, analyzer->table, &qual->coltype))
+    if (isFootprintOpArgs(first, analyzer->table, &qual->coltype))
     {
         qual->var = (Var *) first;
         qual->arg = second;
     }
-    else if (isFootprintOpArgs(second, first, analyzer->table, &qual->coltype))
+    else if (isFootprintOpArgs(second, analyzer->table, &qual->coltype))
     {
         qual->var = (Var *) second;
         qual->arg = first;

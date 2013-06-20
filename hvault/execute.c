@@ -2,6 +2,7 @@
 #include "catalog.h"
 #include "driver.h"
 #include "predicates.h"
+#include "options.h"
 
 typedef struct 
 {
@@ -44,7 +45,6 @@ typedef struct
 
 static ExecState * makeExecState ()
 {
-    ListCell * l;
     int i;
     POINTARRAY * ptarray;
     ExecState * state;
@@ -132,7 +132,7 @@ void hvaultBegin (ForeignScanState * node, int eflags)
             DefElem * name;
 
             options = GetForeignColumnOptions(foreigntableid, i + 1);
-            name = defFindByName(options, "name");
+            name = defFindByName(options, HVAULT_COLUMN_OPTION_CATNAME);
             if (name == NULL) 
             {
                 ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
@@ -148,7 +148,8 @@ void hvaultBegin (ForeignScanState * node, int eflags)
 
         if (type >= HvaultColumnFootprint && type <= HvaultColumnDataset)
         {
-            state->driver->methods->add_column(state->driver, i, 
+            Form_pg_attribute attr = RelationGetDescr(rel)->attrs[i];
+            state->driver->methods->add_column(state->driver, attr,
                 GetForeignColumnOptions(foreigntableid, i+1));
         }
 
@@ -343,7 +344,6 @@ fetchNextChunk (ExecState *state)
 static void
 calculatePredicates (ExecState *state)
 {
-    ListCell *l;
     Predicate *pred;
     /*Allocate buffer if necessary */
     if (state->sel_bufsize < state->chunk.size) 
@@ -366,7 +366,6 @@ calculatePredicates (ExecState *state)
         GSERIALIZED * arggeom;
         GBOX arg;
 
-        pred = lfirst(l);
         expr = list_nth(state->fdw_expr, pred->argno);
         argdatum = ExecEvalExpr(expr, state->expr_ctx, &isnull, NULL);
         if (isnull) 
@@ -429,10 +428,10 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                 break;
             case HvaultBitmap:
                 {
-                    memcpy(layer->temp + VARBITHDRSZ + VARHDRSZ, 
-                           src + layer->item_size * idx, 
+                    memcpy(VARBITS(layer->temp), 
+                           ((char *) src) + layer->item_size * idx, 
                            layer->item_size);
-                    /* dst = VarBitPGetDatum(layer->temp);*/
+                    dst = VarBitPGetDatum(layer->temp);
                 }
                 break;
             case HvaultUInt8:

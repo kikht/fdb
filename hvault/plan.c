@@ -214,7 +214,7 @@ addForeignPaths (HvaultPlannerContext * ctx,
                  List * quals,
                  Relids req_outer)
 {
-    ListCell *l, *m;
+    ListCell *l;
     List *predicates, *own_quals, *pred_quals;
     HvaultCatalogQuery query;
     List * fdw_expr;
@@ -328,7 +328,6 @@ processUsedColumn (Var * var, void * arg)
 {
     HvaultPlannerContext * ctx = arg;
     List * options;
-    DefElem *opt;
     int attlen;
     HvaultColumnInfo * colinfo = table(ctx)->columns + var->varattno-1;
 
@@ -339,11 +338,12 @@ processUsedColumn (Var * var, void * arg)
     }
 
     options = GetForeignColumnOptions(ctx->foreigntableid, var->varattno);
-    colinfo->type = hvaultGetColumnType(defFindByName(options, "type"));
-    colinfo->cat_name = defGetString(defFindByName(options, "name"));
-
-    if (colinfo->cat_name != NULL && ( colinfo->type == HvaultColumnCatalog 
-                                    || colinfo->type == HvaultColumnDataset))
+    colinfo->type = hvaultGetColumnType(
+        defFindByName(options, HVAULT_COLUMN_OPTION_TYPE));
+    colinfo->cat_name = defFindStringByName(options, 
+                                            HVAULT_COLUMN_OPTION_CATNAME);
+    if (colinfo->cat_name != NULL && colinfo->type >= HvaultColumnFootprint 
+                                  && colinfo->type <= HvaultColumnCatalog)
     {
         hvaultCatalogAddColumn(ctx->query, colinfo->cat_name);
     }
@@ -568,8 +568,8 @@ hvaultGetPlan (PlannerInfo *root,
     List *rest_clauses = NIL; /* clauses that must be checked externally */
     List *fdw_plan_private = NIL;
     ListCell *l;
-    List *coltypes;
-    AttrNumber attnum;
+    List * coltypes;
+    int i;
 
     elog(DEBUG1, "Selected path quals: %s", 
          nodeToString(fdw_private->own_quals));
@@ -595,9 +595,16 @@ hvaultGetPlan (PlannerInfo *root,
          nodeToString(rest_clauses));
     elog(DEBUG3, "GetPlan: tlist: %s", nodeToString(tlist));
 
+    coltypes = NIL;
+    for (i = 0; i < fdw_private->table->natts; i++)
+    {
+        coltypes = lappend_int(coltypes, fdw_private->table->columns[i].type);
+    }
+
     /* store fdw_private in List */
-    fdw_plan_private = lappend(fdw_plan_private, fdw_private->packed_query);
-    fdw_plan_private = lappend(fdw_plan_private, fdw_private->predicates);
+    fdw_plan_private = list_make3(fdw_private->packed_query, 
+                                  fdw_private->predicates,
+                                  coltypes);
 
     return make_foreignscan(tlist, rest_clauses, baserel->relid, 
                             fdw_private->fdw_expr, fdw_plan_private);

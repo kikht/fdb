@@ -4,13 +4,15 @@ INC=-I$(POSTGRES_PREFIX)/include/server/
 HDFLIB=-L/usr/lib{,64}/hdf -lmfhdf -ldf -ljpeg -lz 
 LIB=-l:$(POSTGRES_PREFIX)/lib/postgis-2.0.so $(HDFLIB)
 	
-CFLAGS = -std=gnu11 -fPIC -g -Wall -pedantic -Wno-long-long \
+CFLAGS = -std=gnu11 -fPIC -g -Wall -Wextra -pedantic \
 	     -D_POSIX_C_SOURCE -DUSE_ASSERT_CHECKING
 # optimization flags
 CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING
 
-OBJ = analyze.o catalog.o deparse.o execute.o hvault.o interpolate.o \
-      metaload.o options.o plan.o predicates.o utils.o 
+OBJ = analyze.o catalog.o deparse.o driver.o execute.o hvault.o interpolate.o \
+      metaload.o options.o plan.o predicates.o utils.o \
+      drivers/modis_swath.o 
+
 HEADERS = analyze.h catalog.h common.h deparse.h driver.h interpolate.h \
           options.h predicates.h utils.h uthash.h
 
