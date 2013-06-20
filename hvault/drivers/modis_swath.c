@@ -60,6 +60,7 @@ getFile (HvaultModisSwathDriver * driver, char const * cat_name)
     {
         file = palloc(sizeof(HvaultModisSwathFile));
         file->cat_name = cat_name;
+        file->sd_id = FAIL;
         HASH_ADD_KEYPTR(hh, driver->files, file->cat_name, 
                         strlen(file->cat_name), file);
     }
