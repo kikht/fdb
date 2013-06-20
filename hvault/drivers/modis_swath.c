@@ -592,7 +592,7 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
                 layer->layer.fill_val = NULL;
             }
         }
-        if (layer->layer.src_type == HvaultFloat64)
+        if (layer->coltypid == FLOAT8OID)
         {
             if (SDgetcal(layer->sds_id, &layer->layer.scale, &cal_err, 
                          &layer->layer.offset, &offset_err, &sdtype) != SUCCEED)
