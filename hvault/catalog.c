@@ -317,7 +317,6 @@ fetchTuple (HvaultCatalogCursor cursor, Portal file_cursor)
     if (SPI_processed != 1 || SPI_tuptable == NULL)
     {
         /* Can't fetch more files */
-        elog(DEBUG1, "No more files");
         return HvaultCatalogCursorEOF;
     }   
 
