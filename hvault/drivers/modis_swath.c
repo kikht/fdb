@@ -373,14 +373,20 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
     MemoryContext oldmemctx;
     ListCell *l;
 
+    Assert(driver->driver.methods == &hvaultModisSwathMethods);
+
     hvaultModisSwathClose(drv);
     driver->num_samples = 0;
     driver->num_lines = 0;
     driver->cur_line = 0;
 
-    Assert(driver->driver.methods == &hvaultModisSwathMethods);
-    oldmemctx = MemoryContextSwitchTo(driver->memctx);
+    if (list_length(driver->layers) == 0)
+    {
+        elog(ERROR, "Query must contain at least one dataset or geolocation column");
+        return;
+    }
 
+    oldmemctx = MemoryContextSwitchTo(driver->memctx);
     {
         HvaultModisSwathFile *file;
         for (file = driver->files; file != NULL; file = file->hh.next)
@@ -602,7 +608,7 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
     /* Sanity check */
     if (driver->num_lines == 0 || driver->num_samples == 0)
     {
-        elog(WARNING, "Can't get number of lines and samples");
+        elog(WARNING, "Can't get number of lines and samples, skipping record");
         MemoryContextSwitchTo(oldmemctx);
         hvaultModisSwathClose(drv);
         return;
