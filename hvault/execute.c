@@ -41,6 +41,7 @@ typedef struct
     bool *nulls;         /* Tuple null flags */
     LWPOINT *point;      /* Pixel point value */
     LWPOLY *poly;        /* Pixel footprint value */
+    POINTARRAY *ptarray; /* Point array for footprint */
 } ExecState;
 
 static ExecState * makeExecState ()
@@ -57,8 +58,8 @@ static ExecState * makeExecState ()
     }
 
     state->point = lwpoint_make2d(SRID_UNKNOWN, 0, 0);
-    ptarray = ptarray_construct(false, false, 5);
-    state->poly = lwpoly_construct(SRID_UNKNOWN, NULL, 1, &ptarray);
+    state->ptarray = ptarray_construct(false, false, 5);
+    state->poly = lwpoly_construct(SRID_UNKNOWN, NULL, 1, &state->ptarray);
     lwgeom_add_bbox(lwpoly_as_lwgeom(state->poly));
 
     return state;
