@@ -44,7 +44,8 @@ typedef struct
     POINTARRAY *ptarray; /* Point array for footprint */
 } ExecState;
 
-static ExecState * makeExecState ()
+static ExecState * 
+makeExecState ()
 {
     int i;
     ExecState * state;
@@ -64,7 +65,30 @@ static ExecState * makeExecState ()
     return state;
 }
 
-void hvaultBegin (ForeignScanState * node, int eflags)
+static void 
+addCatalogColumn (ExecState * state, Relation rel, int i) 
+{
+    List * options;
+    CatalogColumn * coldata;
+    DefElem * name;
+
+    options = GetForeignColumnOptions(RelationGetRelid(rel), i + 1);
+    name = defFindByName(options, HVAULT_COLUMN_OPTION_CATNAME);
+    if (name == NULL) 
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                errmsg("Catalog column %d has no 'name' option", i)));
+    }
+
+    coldata = palloc(sizeof(CatalogColumn));
+    coldata->attno = i;
+    coldata->cat_name = defGetString(name);
+    coldata->typid = RelationGetDescr(rel)->attrs[i]->atttypid;
+    state->catalog_columns = lappend(state->catalog_columns, coldata);
+}
+
+void 
+hvaultBegin (ForeignScanState * node, int eflags)
 {
     ExecState * state;
     ForeignScan * const plan = (ForeignScan *) node->ss.ps.plan;
@@ -126,25 +150,7 @@ void hvaultBegin (ForeignScanState * node, int eflags)
         }
 
         if (type == HvaultColumnCatalog)
-        {
-            List * options;
-            CatalogColumn * coldata;
-            DefElem * name;
-
-            options = GetForeignColumnOptions(foreigntableid, i + 1);
-            name = defFindByName(options, HVAULT_COLUMN_OPTION_CATNAME);
-            if (name == NULL) 
-            {
-                ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-                        errmsg("Catalog column %d has no 'name' option", i)));
-            }
-
-            coldata = palloc(sizeof(CatalogColumn));
-            coldata->attno = i;
-            coldata->cat_name = defGetString(name);
-            coldata->typid = RelationGetDescr(rel)->attrs[i]->atttypid;
-            state->catalog_columns = lappend(state->catalog_columns, coldata);
-        }
+            addCatalogColumn(state, rel, i);
 
         if (type >= HvaultColumnFootprint && type <= HvaultColumnDataset)
         {
@@ -163,11 +169,12 @@ void hvaultBegin (ForeignScanState * node, int eflags)
     foreach(l, packed_predicates)
     {
         List * pred = lfirst(l);
-        HvaultColumnType coltype = linitial_int(pred);
-        HvaultGeomOperator op = lsecond_int(pred);
-        AttrNumber argno = lthird_int(pred);
-        bool isneg = lfourth_int(pred);
+        HvaultColumnType coltype;
+        HvaultGeomOperator op;
+        AttrNumber argno;
+        bool isneg;
 
+        hvaultUnpackPredicate(pred, &coltype, &op, &argno, &isneg);
         state->predicates[i].argno = argno;
         state->predicates[i].pred = hvaultGetPredicate(op, isneg, coltype, 
                                                        state->geotype);
@@ -694,70 +701,277 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
 {
     //TODO: port from old version
 
-    // ForeignScan *plan;
-    // List *fdw_plan_private;
-    // Oid foreigntableid;
-    // char *catalog;
-    // List *predicates, *pred_str;
-    // ListCell *l;
+    ForeignScan *plan;
+    List *packed_query, *packed_predicates, *coltypes;
+    HvaultCatalogCursor cursor;
+    List * active_columns;
+    char const * query_str;
+    ListCell *l;
+    int i;
+    TupleDesc tupdesc;
+    List *pred_str;
 
-    // plan = (ForeignScan *) node->ss.ps.plan;
-    // fdw_plan_private = plan->fdw_private;
-    // foreigntableid = RelationGetRelid(node->ss.ss_currentRelation);
-    // catalog = hvaultGetTableOptionString(foreigntableid, "catalog");
-    // if (catalog)
-    // {
-    //     List *query = list_nth(fdw_plan_private, HvaultPlanCatalogQuery);
-    //     HvaultCatalogCursor cursor = 
-    //         hvaultCatalogInitCursor(query, CurrentMemoryContext);
-    //     char const * query_str = hvaultCatalogGetQuery(cursor);
-    //     ExplainPropertyText("Catalog query", query_str, es);
-    //     hvaultCatalogFreeCursor(cursor);
-    // }
-    // else
-    // {
-    //     char *filename = hvaultGetTableOptionString(foreigntableid, "filename");
-    //     if (filename != NULL)
-    //         ExplainPropertyText("Single file", filename, es);
-    // }
+    plan = (ForeignScan *) node->ss.ps.plan;
 
-    // predicates = list_nth(fdw_plan_private, HvaultPlanPredicates);
-    // pred_str = NIL;
-    // foreach(l, predicates)
-    // {
-    //     GeomPredicate *pred = listToPredicate((List *) lfirst(l));
-    //     StringInfoData str;
-    //     char *colname;
-    //     initStringInfo(&str);
+    Assert(list_length(plan->fdw_private) == 3);
+    packed_query = linitial(plan->fdw_private);
+    packed_predicates = lsecond(plan->fdw_private);
+    coltypes = lthird(plan->fdw_private);
 
-    //     switch (pred->coltype) {
-    //         case HvaultColumnFootprint:
-    //             colname = "footprint";
-    //             break;
-    //         case HvaultColumnPoint:
-    //             colname = "point";
-    //             break;
-    //         default:
-    //             colname = "<unknown>";
-    //     }
+    tupdesc = RelationGetDescr(node->ss.ss_currentRelation);
+    active_columns = NIL;
+    i = 0;
+    foreach(l, coltypes)
+    {
+        HvaultColumnType coltype = lfirst_int(l);
+        if (coltype != HvaultColumnNull)
+        {
+            active_columns = lappend(active_columns, 
+                                     tupdesc->attrs[i]->attname.data);
+        }
+        i++;
+    }
+    if (list_length(active_columns) > 0)
+        ExplainPropertyList("Active columns", active_columns, es);
+    else
+        ExplainPropertyText("Active columns", "<none>", es);
 
-    //     if (pred->isneg)
-    //         appendStringInfoString(&str, "NOT ");
+    cursor = hvaultCatalogInitCursor(packed_query, CurrentMemoryContext);
+    query_str = hvaultCatalogGetQuery(cursor);
+    ExplainPropertyText("Catalog query", query_str, es);
+    hvaultCatalogFreeCursor(cursor);
+
+    pred_str = NIL;
+    foreach(l, packed_predicates)
+    {
+        List * pred = lfirst(l);
+        HvaultColumnType coltype;
+        HvaultGeomOperator op;
+        AttrNumber argno;
+        bool isneg;
+        char *colname;
+        StringInfoData str;
+
+        initStringInfo(&str);
+        hvaultUnpackPredicate(pred, &coltype, &op, &argno, &isneg);
+        switch (coltype) {
+            case HvaultColumnFootprint:
+                colname = "footprint";
+                break;
+            case HvaultColumnPoint:
+                colname = "point";
+                break;
+            default:
+                colname = "<unknown>";
+        }
+
+        if (isneg)
+            appendStringInfoString(&str, "NOT ");
     
-    //     if (pred->op < HvaultGeomNumRealOpers) 
-    //     {
-    //         appendStringInfo(&str, "%s %s $%d", 
-    //                          colname, hvaultGeomopstr[pred->op], pred->argno+1);
-    //     }
-    //     else
-    //     {
-    //         appendStringInfo(&str, "$%d %s %s", 
-    //                          pred->argno+1, hvaultGeomopstr[pred->op], colname);
-    //     }
-    //     pred_str = lappend(pred_str, str.data);
+        if (op < HvaultGeomNumRealOpers) 
+        {
+            appendStringInfo(&str, "%s %s $%d", 
+                             colname, hvaultGeomopstr[op], argno+1);
+        }
+        else
+        {
+            appendStringInfo(&str, "$%d %s %s", 
+                             argno+1, hvaultGeomopstr[op], colname);
+        }
+        pred_str = lappend(pred_str, str.data);
+    }
+    
+    if (list_length(pred_str) > 0)
+        ExplainPropertyList("Geometry predicates", pred_str, es);
+}
 
-    //     pfree(pred);
-    // }
-    // if (list_length(pred_str) > 0)
-    //     ExplainPropertyList("Geometry predicates", pred_str, es);
+static int
+aquireSampleRows(Relation relation,
+                 int elevel,
+                 HeapTuple *rows,
+                 int targrows,
+                 double *totalrows,
+                 double *totaldeadrows)
+{
+    ExecState *state;
+    Oid foreigntableid;
+    TupleDesc tupdesc;
+    int num_rows = 0;
+    int num_files;
+    double rowstoskip = -1;
+    double rstate = anl_init_selection_state(targrows);
+    double procrows = 0;
+    HvaultCatalogQuery query;
+    HvaultTableInfo table;
+    ForeignTable *foreigntable;
+    size_t i;
+
+    (void)(elevel);
+
+    foreigntableid = RelationGetRelid(relation);
+    tupdesc = RelationGetDescr(relation);
+    foreigntable = GetForeignTable(foreigntableid);
+
+    table.relid = 0;
+    table.natts = 0;
+    table.columns = NULL;
+    table.catalog = hvaultGetTableOptionString(foreigntableid, "catalog");
+    if (table.catalog == NULL)
+        return 0;
+
+    num_files = targrows / 100;
+    if (num_files < 5)
+        num_files = 5;
+    query = hvaultCatalogInitQuery(&table);
+    hvaultCatalogAddColumn(query, "*");
+    hvaultCatalogSetSort(query, "random()", false);
+    hvaultCatalogSetLimit(query, num_files);
+
+    state = makeExecState();
+    state->memctx = CurrentMemoryContext;
+    state->nattr = tupdesc->natts;
+    state->values = palloc(sizeof(Datum) * state->nattr);
+    state->nulls = palloc(sizeof(bool) * state->nattr);
+    state->cursor = hvaultCatalogInitCursor(hvaultCatalogPackQuery(query), 
+                                            state->memctx);
+    state->driver = hvaultGetDriver(foreigntable->options, state->memctx);
+    state->geotype = state->driver->geotype;
+
+    for (i = 0; i < state->nattr; i++)
+    {
+        List *options = GetForeignColumnOptions(foreigntableid, i+1);
+        HvaultColumnType type = hvaultGetColumnType(defFindByName(options, 
+                                                                  "type"));
+        state->col_indices[type] = i;
+
+        if (type == HvaultColumnCatalog)
+            addCatalogColumn(state, relation, i);
+
+        if (type >= HvaultColumnFootprint && type <= HvaultColumnDataset)
+        {
+            Form_pg_attribute attr = tupdesc->attrs[i];
+            state->driver->methods->add_column(state->driver, attr,
+                GetForeignColumnOptions(foreigntableid, i+1));
+        }
+    }
+
+    memset(rows, 0, sizeof(HeapTuple) * targrows);
+    while (fetchNextFile(state))
+    {
+        vacuum_delay_point();
+        fillAllColumnsWithNull(state);
+        fillCatalogColumns(state);
+        while (fetchNextChunk(state))
+        {
+            vacuum_delay_point();
+            fillChunkColumns(state);
+            while (!nextChunkNeeded(state))
+            {
+                int pos = -1;
+                procrows += 1;
+                if (num_rows >= targrows)
+                {
+                    if (rowstoskip < 0)
+                        rowstoskip = anl_get_next_S(procrows, targrows, 
+                                                    &rstate);
+
+                    if (rowstoskip <= 0)
+                    {
+                        pos = (int) (anl_random_fract() * targrows);
+                        heap_freetuple(rows[pos]);
+                        rows[pos] = NULL;
+                    }
+                    else
+                    {
+                        pos = -1;
+                    }
+                    rowstoskip -= 1;
+                }
+                else
+                {
+                    pos = num_rows;
+                    num_rows++;
+                }
+
+                if (pos >= 0)
+                {
+                    fillPixelColumns(state);
+                    Assert(rows[pos] == NULL);
+                    rows[pos] = heap_form_tuple(tupdesc, state->values, 
+                                                state->nulls);
+                }
+                incrementPosition(state);
+            }
+        }
+    }
+
+    /* TODO: get rid of HVAULT_TUPLES_PER_FILE as it depends on driver */
+    *totalrows = hvaultGetNumFiles(table.catalog) * HVAULT_TUPLES_PER_FILE;
+    *totaldeadrows = 0;
+    return num_rows;
+}
+
+bool 
+hvaultAnalyze(Relation relation, 
+              AcquireSampleRowsFunc *func,
+              BlockNumber *totalpages)
+{
+    char *catalog;
+    StringInfo query;
+    Datum val;
+    bool isnull;
+    Oid argtypes[] = {INT4OID};
+    Datum argvals[] = {BLCKSZ};
+
+
+    catalog = hvaultGetTableOptionString(RelationGetRelid(relation), "catalog");
+    if (catalog == NULL)
+        return false;
+
+    if (SPI_connect() != SPI_OK_CONNECT)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't connect to SPI")));
+        return false; /* Will never reach this */
+    }
+
+    query = makeStringInfo();
+    appendStringInfo(query, 
+                     "SELECT CAST(((SUM(size) + $1 - 1)/$1) AS float8) FROM %s", 
+                     catalog);
+    if (SPI_execute_with_args(query->data, 1, argtypes, argvals, NULL, true, 1) 
+            != SPI_OK_SELECT ||
+        SPI_processed != 1 ||
+        SPI_tuptable->tupdesc->natts != 1 ||
+        SPI_tuptable->tupdesc->attrs[0]->atttypid != FLOAT8OID)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't select from catalog %s", catalog)));
+        return false; /* Will never reach this */
+    }
+    pfree(query->data);
+    pfree(query);
+
+    val = heap_getattr(SPI_tuptable->vals[0], 1, 
+                       SPI_tuptable->tupdesc, &isnull);
+    if (isnull)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't select from catalog %s", catalog)));
+        return false; /* Will never reach this */            
+    }
+
+
+    *totalpages = DatumGetFloat8(val);
+    if (*totalpages < 1)
+        *totalpages = 1;
+
+    if (SPI_finish() != SPI_OK_FINISH)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
+                        errmsg("Can't finish access to SPI")));
+        return false; /* Will never reach this */
+    }
+    *func = aquireSampleRows;
+    return true;
 }
