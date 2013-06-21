@@ -664,6 +664,7 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
     if (driver->cur_line >= driver->num_lines)
     {
         chunk->size = 0;
+        MemoryContextSwitchTo(oldmemctx);
         return;
     }
 
@@ -700,6 +701,7 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
         {
             elog(ERROR, "Can't read data from %s dataset %s", 
                  layer->file->filename, layer->sds_name);
+            MemoryContextSwitchTo(oldmemctx);
             return; /* will never reach here */
         }
 
