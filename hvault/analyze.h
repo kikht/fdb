@@ -44,6 +44,13 @@ List * hvaultAnalyzeECs (HvaultQualAnalyzer analyzer, List * ecs);
    Returns NULL if predicate is not available for this qual */
 List * hvaultCreatePredicate (HvaultQual * qual, List ** fdw_expr);
 
+/* Unpacks List representation of predicate into separate fields */
+void hvaultUnpackPredicate (List * predicate, 
+                            HvaultColumnType * coltype, 
+                            HvaultGeomOperator * op,
+                            AttrNumber * argno,
+                            bool * isneg);
+
 /* Walks through expression tree and calls cb on every found Var that has 
  * specified relid */
 void hvaultAnalyzeUsedColumns (Node * expr, 

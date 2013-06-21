@@ -51,7 +51,7 @@ hvault_fdw_handler(PG_FUNCTION_ARGS)
     fdwroutine->IterateForeignScan  = hvaultIterate;
     fdwroutine->ReScanForeignScan   = hvaultReScan;
     fdwroutine->EndForeignScan      = hvaultEnd;
-    // fdwroutine->AnalyzeForeignTable = hvaultAnalyze;
+    fdwroutine->AnalyzeForeignTable = hvaultAnalyze;
 
 #ifdef USE_ASSERT_CHECKING
     assert_enabled = true;

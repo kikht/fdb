@@ -528,6 +528,20 @@ hvaultCreatePredicate (HvaultQual * qual, List ** fdw_expr)
                           geom_qual->pred.isneg);
 }
 
+/* Unpacks List representation of predicate into separate fields */
+void 
+hvaultUnpackPredicate (List * pred, 
+                       HvaultColumnType * coltype, 
+                       HvaultGeomOperator * op,
+                       AttrNumber * argno,
+                       bool * isneg)
+{
+    *coltype = linitial_int(pred);
+    *op = lsecond_int(pred);
+    *argno = lthird_int(pred);
+    *isneg = lfourth_int(pred);
+}
+
 void 
 hvaultDeparseQual (HvaultQual * qual, HvaultDeparseContext * ctx)
 {
@@ -616,3 +630,5 @@ hvaultAnalyzeUsedColumns (Node * expr,
     cxt.arg = arg;
     usedColumnsWalker(expr, &cxt);
 }
+
+
