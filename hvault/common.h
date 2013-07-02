@@ -94,6 +94,7 @@ typedef enum
     HvaultFloat64,
 
     HvaultBitmap,
+    HvaultPrefixBitmap,
 
     HvaultNumDatatypes
 } HvaultDataType;

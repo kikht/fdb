@@ -30,6 +30,8 @@ typedef struct
     int32_t sds_id;
     int32_t sds_type;
     Oid coltypid;
+    int bitmap_dims;
+    int32_t dims[H4_MAX_VAR_DIMS];
 } HvaultModisSwathLayer;
 
 typedef struct 
@@ -172,7 +174,7 @@ addGeolocationColumns (HvaultModisSwathDriver * driver, List * options)
     factor_option = defFindByName(options, HVAULT_COLUMN_OPTION_FACTOR);
     if (factor_option != NULL)
     {
-        factor = defGetInt64(factor_option);
+        factor = defGetInt(factor_option);
     }
 
     driver->lat_layer = makeLayer();
@@ -224,6 +226,7 @@ addRegularColumn (HvaultModisSwathDriver * driver,
     layer->file = file;
     layer->layer.colnum = attr->attnum-1;
     layer->coltypid = attr->atttypid;
+    /* TODO: Add support for array datatypes */
     switch (attr->atttypid)
     {
         /* Scaled value */
@@ -232,11 +235,22 @@ addRegularColumn (HvaultModisSwathDriver * driver,
             break;
         /* Bitfield */
         case BITOID:
-            layer->layer.src_type = HvaultBitmap;
+        {
+            const char * type_opt = defFindStringByName(options, 
+                HVAULT_COLUMN_OPTION_BITMAPTYPE);
+            if (type_opt != NULL && !strcmp(type_opt, "prefix"))
+                layer->layer.src_type = HvaultPrefixBitmap;
+            else
+                layer->layer.src_type = HvaultBitmap;
+
+            def = defFindByName(options, HVAULT_COLUMN_OPTION_BITMAPDIMS);
+            layer->bitmap_dims = def != NULL ? defGetInt(def) : 0;
+
             layer->layer.temp = palloc(VARBITTOTALLEN(attr->atttypmod));
             VARBITLEN(layer->layer.temp) = attr->atttypmod;
             SET_VARSIZE(layer->layer.temp, VARBITTOTALLEN(attr->atttypmod));
             layer->layer.item_size = VARBITBYTES(layer->layer.temp);
+        }
             break;
         /* Direct values */
         case FLOAT4OID:
@@ -258,21 +272,22 @@ addRegularColumn (HvaultModisSwathDriver * driver,
             break;
     }
 
+    /* TODO: Add support for whole-row factors */
     def = defFindByName(options, HVAULT_COLUMN_OPTION_FACTOR);
     if (def != NULL)
     {
-        int64_t val = defGetInt64(def);
+        int64_t val = defGetInt(def);
         layer->layer.hfactor = val;
         layer->layer.vfactor = val;
     }
 
     def = defFindByName(options, HVAULT_COLUMN_OPTION_HFACTOR);
     if (def != NULL)
-        layer->layer.hfactor = defGetInt64(def);
+        layer->layer.hfactor = defGetInt(def);
 
     def = defFindByName(options, HVAULT_COLUMN_OPTION_VFACTOR);
     if (def != NULL)
-        layer->layer.vfactor = defGetInt64(def);
+        layer->layer.vfactor = defGetInt(def);
 
     layer->layer.type = layer->layer.hfactor == 1 && layer->layer.vfactor == 1 ?
                         HvaultLayerSimple : HvaultLayerChunked;             
@@ -420,7 +435,7 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
     foreach(l, driver->layers)
     {
         HvaultModisSwathLayer *layer = lfirst(l);
-        int32_t sds_idx, rank, dims[H4_MAX_VAR_DIMS], sdnattrs, sdtype;
+        int32_t sds_idx, rank, sdnattrs, sdtype;
         size_t norm_lines, norm_samples, layer_lines, layer_samples;
         HvaultDataType cur_dataype;
         double cal_err, offset_err;
@@ -451,7 +466,7 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
             continue;
         }
         /* Get dimension sizes */
-        if (SDgetinfo(layer->sds_id, NULL, &rank, dims, &layer->sds_type, 
+        if (SDgetinfo(layer->sds_id, NULL, &rank, layer->dims, &layer->sds_type, 
                       &sdnattrs) == FAIL)
         {
             elog(WARNING, "Can't get info about %s in file %s, skipping",
@@ -462,9 +477,8 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
         }
         
         /* Check dimensions correctness */
-        //TODO: add bitmap dimension support
         //TODO: add dimension prefix/postfix support
-        if (rank != 2)
+        if (rank != 2 + layer->bitmap_dims)
         {
             elog(WARNING, "SDS %s in file %s has %dd dataset, skipping",
                  layer->sds_name, layer->file->filename, rank);
@@ -472,15 +486,24 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
             layer->sds_id = FAIL;
             continue;
         }
-        layer_lines = dims[0];
-        layer_samples = dims[1];
+
+        if (layer->layer.src_type == HvaultPrefixBitmap) 
+        {
+            layer_lines = layer->dims[layer->bitmap_dims];
+            layer_samples = layer->dims[layer->bitmap_dims+1];
+        }
+        else 
+        {
+            layer_lines = layer->dims[0];
+            layer_samples = layer->dims[1];
+        }
         norm_lines = layer_lines * layer->layer.vfactor;
         norm_samples = layer_samples * layer->layer.hfactor;
 
         if (norm_samples < driver->scanline_size)
         {
-            elog(WARNING, "SDS %s in file %s has only %d lines, skipping",
-                 layer->sds_name, layer->file->filename, dims[0]);
+            elog(WARNING, "SDS %s in file %s has only %lu lines, skipping",
+                 layer->sds_name, layer->file->filename, norm_samples);
             SDendaccess(layer->sds_id);
             layer->sds_id = FAIL;
             continue;
@@ -555,10 +578,15 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
             layer->layer.item_size = hvaultDatatypeSize[cur_dataype];
         } 
         /* Handle bitmaps specially */
-        else if (layer->layer.src_type == HvaultBitmap)
+        else if (layer->layer.src_type == HvaultBitmap ||
+                 layer->layer.src_type == HvaultPrefixBitmap)
         {
-            //TODO: add bitmap dimension support
             size_t bit_layers_size = 1;
+            size_t pos = layer->layer.src_type == HvaultPrefixBitmap ? 0 : 2;
+            size_t const end = pos + layer->bitmap_dims;
+            for ( ; pos < end; pos++)
+                bit_layers_size *= layer->dims[pos];
+
             if (layer->layer.item_size != 
                 bit_layers_size * hvaultDatatypeSize[cur_dataype])
             {
@@ -683,18 +711,30 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
         HvaultModisSwathLayer *layer = lfirst(l);
         int32_t start[H4_MAX_VAR_DIMS], stride[H4_MAX_VAR_DIMS], 
                 end[H4_MAX_VAR_DIMS];
+        int i;
+        size_t line_idx;
 
         if (layer->sds_id == FAIL)
             continue;
 
-        //TODO: add bitmap dimension support
         //TODO: add dimension prefix support
-        start[0] = driver->cur_line / layer->layer.vfactor;
-        start[1] = 0;
-        stride[0] = 1;
-        stride[1] = 1;
-        end[0] = driver->scanline_size / layer->layer.vfactor;
-        end[1] = driver->num_samples / layer->layer.hfactor;
+        for (i = 0; i < H4_MAX_VAR_DIMS; i++)
+        {
+            start[i] = 0;
+            stride[i] = 1;
+            end[i] = layer->dims[i];
+        }
+
+        if (layer->layer.src_type == HvaultPrefixBitmap)
+        {
+            line_idx = layer->bitmap_dims;
+        }
+        else 
+        {
+            line_idx = 0;
+        }
+        start[line_idx] = driver->cur_line / layer->layer.vfactor;
+        end[line_idx] = driver->scanline_size / layer->layer.vfactor;
 
         if (SDreaddata(layer->sds_id, start, stride, end, 
                        layer->layer.data) == FAIL)

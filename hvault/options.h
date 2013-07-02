@@ -11,6 +11,8 @@
 #define HVAULT_COLUMN_OPTION_VFACTOR "vfactor"
 #define HVAULT_COLUMN_OPTION_DATASET "dataset"
 #define HVAULT_COLUMN_OPTION_SCANLINE "scanline"
+#define HVAULT_COLUMN_OPTION_BITMAPDIMS "bitmap_dims"
+#define HVAULT_COLUMN_OPTION_BITMAPTYPE "bitmap_type"
 
 HvaultColumnType hvaultGetColumnType (DefElem * def);
 

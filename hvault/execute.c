@@ -443,6 +443,19 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                     dst = VarBitPGetDatum(layer->temp);
                 }
                 break;
+            case HvaultPrefixBitmap:
+                {
+                    size_t i;
+                    const size_t bitmap_stride = state->chunk.size 
+                        / layer->hfactor / layer->vfactor;
+                    for (i = 0; i < layer->item_size; i++)
+                    {
+                        VARBITS(layer->temp)[i] = 
+                            ((char *) src)[idx + i * bitmap_stride];
+                    }
+                    dst = VarBitPGetDatum(layer->temp);
+                }
+                break;
             case HvaultUInt8:
                 dst = UInt8GetDatum     (((uint8_t *)  src)[idx]);
                 break;
@@ -487,6 +500,7 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                 dst = ((double *)   src)[idx];
                 break;
             case HvaultBitmap:
+            case HvaultPrefixBitmap:
                 elog(ERROR, "Scaled bitmaps are not supported");
                 return; /* Will never reach this */
             case HvaultUInt8:
