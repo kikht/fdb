@@ -25,18 +25,3 @@ CREATE OR REPLACE FUNCTION hvault_mass_load_modis_swath
     RETURNS int4
     AS 'MODULE_PATHNAME'
     LANGUAGE C STRICT;
-
-CREATE OR REPLACE FUNCTION hvault_create_catalog(name text) RETURNS void AS $$
-BEGIN
-	EXECUTE 'CREATE TABLE '||quote_ident($1)||' (
-		file_id   serial    PRIMARY KEY,
-		filename  text      UNIQUE NOT NULL,
-		starttime timestamp NOT NULL,
-		stoptime  timestamp NOT NULL,
-		footprint geometry  NOT NULL,
-		size      int8      NOT NULL
-	)';
-	EXECUTE 'CREATE INDEX ON '||quote_ident($1)||' (starttime)';
-    EXECUTE 'CREATE INDEX ON '||quote_ident($1)||' (footprint)';
-END;
-$$ LANGUAGE PLPGSQL;

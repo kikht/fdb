@@ -29,4 +29,7 @@ DefElem * defFindByName (List * list, char const * key);
 /* Finds DefElem with specified name in List and extracts String from it */
 char * defFindStringByName (List * list, char const * key);
 
+/* Extracts int64_t from DefElem converting from string if necessary */
+int64_t defGetInt (DefElem * def);
+
 #endif /* _UTILS_H_ */

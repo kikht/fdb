@@ -24,6 +24,21 @@
 -- ) SERVER hvault_service
 --   OPTIONS (filename '/home/kikht/Downloads/MOD09.A2013026.0635.005.2013027075743.hdf');
 
+CREATE OR REPLACE FUNCTION hvault_create_catalog(name text) RETURNS void AS $$
+BEGIN
+    EXECUTE 'CREATE TABLE '||quote_ident($1)||' (
+        file_id   serial    PRIMARY KEY,
+        filename  text      UNIQUE NOT NULL,
+        starttime timestamp NOT NULL,
+        stoptime  timestamp NOT NULL,
+        footprint geometry  NOT NULL,
+        size      int8      NOT NULL
+    )';
+    EXECUTE 'CREATE INDEX ON '||quote_ident($1)||' (starttime)';
+    EXECUTE 'CREATE INDEX ON '||quote_ident($1)||' (footprint)';
+END;
+$$ LANGUAGE PLPGSQL;
+
 SELECT hvault_create_catalog('hdf_catalog');
 
 -- SELECT hvault_load_modis_swath(
@@ -38,6 +53,11 @@ SELECT hvault_create_catalog('hdf_catalog');
 
 SELECT hvault_mass_load_modis_swath(
     'hdf_catalog', '/home/kikht/Downloads', 'MOD09*.hdf');
+alter table hdf_catalog add column mod35 text;
+update hdf_catalog set mod35 = '/home/kikht/Downloads/hdf/MOD35_L2.A2013110.0115.005.2013111064806.hdf' 
+    where starttime = '2013-04-20 01:15:01.349555';
+update hdf_catalog set mod35 = '/home/kikht/Downloads/hdf/MOD35_L2.A2013110.0250.005.2013111064046.hdf' 
+    where starttime = '2013-04-20 02:50:00.159843';    
 
 ANALYZE hdf_catalog;
 
@@ -102,6 +122,12 @@ CREATE FOREIGN TABLE test_catalog (
         OPTIONS (type 'dataset', cat_name 'filename', 
                  dataset '1km Surface Reflectance Band 16'),
 
+    Cloud_Mask                   bit(48)
+        OPTIONS (type 'dataset', cat_name 'mod35', dataset 'Cloud_Mask',
+                 bitmap_type 'prefix', bitmap_dims '1'),
+    Cloud_Mask_QA                bit(80)
+        OPTIONS (type 'dataset', cat_name 'mod35', dataset 'Quality_Assurance',
+                 bitmap_type 'postfix', bitmap_dims '1'),
     Reflectance_Band_Quality     int4    
         OPTIONS (type 'dataset', cat_name 'filename', 
                  dataset '1km Reflectance Band Quality')
