@@ -30,7 +30,8 @@ typedef struct
     int32_t sds_id;
     int32_t sds_type;
     Oid coltypid;
-    int bitmap_dims;
+    int bitmap_dims, prefix_dims;
+    int32_t prefix[H4_MAX_VAR_DIMS];
     int32_t dims[H4_MAX_VAR_DIMS];
 } HvaultModisSwathLayer;
 
@@ -204,8 +205,10 @@ addRegularColumn (HvaultModisSwathDriver * driver,
     HvaultModisSwathFile * file;
     HvaultModisSwathLayer * layer;
     DefElem * def;
+    char *prefix;
 
     layer = makeLayer();
+    Assert(layer != NULL);
     layer->sds_name = defFindStringByName(options, 
                                           HVAULT_COLUMN_OPTION_DATASET);
     if (layer->sds_name == NULL)
@@ -259,10 +262,6 @@ addRegularColumn (HvaultModisSwathDriver * driver,
         case INT8OID:
             /* nop */
             break;
-            break;
-            break;
-            break;
-            break;
         /* Unsupported */
         case VARBITOID:
             //TODO: maybe we can suport this
@@ -290,9 +289,29 @@ addRegularColumn (HvaultModisSwathDriver * driver,
         layer->layer.vfactor = defGetInt(def);
 
     layer->layer.type = layer->layer.hfactor == 1 && layer->layer.vfactor == 1 ?
-                        HvaultLayerSimple : HvaultLayerChunked;             
+                        HvaultLayerSimple : HvaultLayerChunked;
 
-    Assert(layer != NULL);
+    prefix = defFindStringByName(options, HVAULT_COLUMN_OPTION_PREFIX);
+    if (prefix != NULL)
+    {
+        char * start = prefix;
+        char * end = NULL;
+        unsigned long val;
+        do {
+            errno = 0;
+            val = strtoul(start, &end, 10);
+            if (!errno)
+            {
+                layer->prefix[layer->prefix_dims++] = val;
+                start = end;
+            }
+            else
+            {
+                start++;
+            }
+        } while (*end != '\0');
+    }
+
     driver->layers = lappend(driver->layers, layer);
 }
 
@@ -439,6 +458,7 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
         size_t norm_lines, norm_samples, layer_lines, layer_samples;
         HvaultDataType cur_dataype;
         double cal_err, offset_err;
+        int i;
 
         elog(DEBUG2, "Opening SDS %s", layer->sds_name);
 
@@ -477,8 +497,7 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
         }
         
         /* Check dimensions correctness */
-        //TODO: add dimension prefix/postfix support
-        if (rank != 2 + layer->bitmap_dims)
+        if (rank != 2 + layer->bitmap_dims + layer->prefix_dims)
         {
             elog(WARNING, "SDS %s in file %s has %dd dataset, skipping",
                  layer->sds_name, layer->file->filename, rank);
@@ -486,16 +505,29 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
             layer->sds_id = FAIL;
             continue;
         }
+        for (i = 0; i < layer->prefix_dims; i++)
+        {
+            if (layer->dims[i] <= layer->prefix[i])
+            {
+                elog(WARNING, 
+                     "Prefix is out of range for SDS %s in file %s, skipping",
+                     layer->sds_name, layer->file->filename);
+                SDendaccess(layer->sds_id);
+                layer->sds_id = FAIL;
+                continue;       
+            }
+        }
 
         if (layer->layer.src_type == HvaultPrefixBitmap) 
         {
-            layer_lines = layer->dims[layer->bitmap_dims];
-            layer_samples = layer->dims[layer->bitmap_dims+1];
+            layer_lines = layer->dims[layer->prefix_dims + layer->bitmap_dims];
+            layer_samples = layer->dims[layer->prefix_dims + 
+                                        layer->bitmap_dims + 1];
         }
         else 
         {
-            layer_lines = layer->dims[0];
-            layer_samples = layer->dims[1];
+            layer_lines = layer->dims[layer->prefix_dims];
+            layer_samples = layer->dims[layer->prefix_dims + 1];
         }
         norm_lines = layer_lines * layer->layer.vfactor;
         norm_samples = layer_samples * layer->layer.hfactor;
@@ -581,9 +613,11 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
         else if (layer->layer.src_type == HvaultBitmap ||
                  layer->layer.src_type == HvaultPrefixBitmap)
         {
-            size_t bit_layers_size = 1;
-            size_t pos = layer->layer.src_type == HvaultPrefixBitmap ? 0 : 2;
-            size_t const end = pos + layer->bitmap_dims;
+            size_t bit_layers_size, pos, end;
+            bit_layers_size = 1;
+            pos = layer->layer.src_type == HvaultPrefixBitmap ? 0 : 2;
+            pos += layer->prefix_dims;
+            end = pos + layer->bitmap_dims;
             for ( ; pos < end; pos++)
                 bit_layers_size *= layer->dims[pos];
 
@@ -710,33 +744,38 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
     {
         HvaultModisSwathLayer *layer = lfirst(l);
         int32_t start[H4_MAX_VAR_DIMS], stride[H4_MAX_VAR_DIMS], 
-                end[H4_MAX_VAR_DIMS];
+                edge[H4_MAX_VAR_DIMS];
         int i;
         size_t line_idx;
 
         if (layer->sds_id == FAIL)
             continue;
 
-        //TODO: add dimension prefix support
         for (i = 0; i < H4_MAX_VAR_DIMS; i++)
         {
             start[i] = 0;
             stride[i] = 1;
-            end[i] = layer->dims[i];
+            edge[i] = layer->dims[i];
+        }
+
+        for (i = 0; i < layer->prefix_dims; i++)
+        {
+            start[i] = layer->prefix[i];
+            edge[i] = 1;
         }
 
         if (layer->layer.src_type == HvaultPrefixBitmap)
         {
-            line_idx = layer->bitmap_dims;
+            line_idx = layer->bitmap_dims + layer->prefix_dims;
         }
         else 
         {
-            line_idx = 0;
+            line_idx = layer->prefix_dims;
         }
         start[line_idx] = driver->cur_line / layer->layer.vfactor;
-        end[line_idx] = driver->scanline_size / layer->layer.vfactor;
+        edge[line_idx] = driver->scanline_size / layer->layer.vfactor;
 
-        if (SDreaddata(layer->sds_id, start, stride, end, 
+        if (SDreaddata(layer->sds_id, start, stride, edge, 
                        layer->layer.data) == FAIL)
         {
             elog(ERROR, "Can't read data from %s dataset %s", 
