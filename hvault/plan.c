@@ -56,21 +56,11 @@ typedef struct
     List *predicates;
 } HvaultPathData;
 
-static PathKey * makeIndexPathkeys (EquivalenceClass *ec, Oid intopfamily)
-{
-    PathKey *pk = makeNode(PathKey);
-    pk->pk_eclass = ec;
-    pk->pk_nulls_first = false;
-    pk->pk_strategy = BTLessStrategyNumber;
-    pk->pk_opfamily = intopfamily;
-    return pk;
-}
-
 static void   
 getSortPathKeys (HvaultPlannerContext * ctx)
 {
     ListCell *l, *m, *k;
-    PathKey *line_pk = NULL, *sample_pk = NULL, *index_pk = NULL, *base_pk;
+    PathKey *line_pk = NULL, *sample_pk = NULL, *index_pk = NULL;
     Oid intopfamily;
     List *tails = NIL;
     List *catalog_pk = NIL;
