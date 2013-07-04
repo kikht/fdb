@@ -66,37 +66,26 @@ static PathKey * makeIndexPathkeys (EquivalenceClass *ec, Oid intopfamily)
     return pk;
 }
 
-typedef struct CatalogEC CatalogEC;
-struct CatalogEC
-{
-    EquivalenceClass *ec;
-    AttrNumber attnum;
-    CatalogEC *next;
-};
-
 static void   
 getSortPathKeys (HvaultPlannerContext * ctx)
 {
-    ListCell *l, *m;
+    ListCell *l, *m, *k;
     PathKey *line_pk = NULL, *sample_pk = NULL, *index_pk = NULL, *base_pk;
-    CatalogEC * catalog_ec;
-    CatalogEC * cur_ec = NULL;
     Oid intopfamily;
     List *tails = NIL;
+    List *catalog_pk = NIL;
+    List *catalog_attnum = NIL;
 
     intopfamily  = get_opfamily_oid(BTREE_AM_OID, 
                                     list_make1(makeString("integer_ops")), 
                                     false);
-    catalog_ec = palloc0(sizeof(CatalogEC) * table(ctx)->natts);
-    foreach(l, ctx->root->eq_classes)
+    foreach(l, ctx->root->canon_pathkeys)
     {
-        EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
-        elog(DEBUG2, "processing EquivalenceClass %s", nodeToString(ec));
+        PathKey * pk = lfirst(l);
+        EquivalenceClass *ec = pk->pk_eclass;
+
         if (!bms_is_member(ctx->baserel->relid, ec->ec_relids))
-        {
-            elog(DEBUG1, "not my relid");
             continue;
-        }
 
         foreach(m, ec->ec_members)
         {
@@ -109,44 +98,44 @@ getSortPathKeys (HvaultPlannerContext * ctx)
             var = (Var *) em->em_expr;
             if (ctx->baserel->relid != var->varno)
                 continue;
-            
+
             Assert(var->varattno <= table(ctx)->natts);
             switch (table(ctx)->columns[var->varattno-1].type)
             {
                 case HvaultColumnIndex:
-                    if (index_pk)
-                        elog(ERROR, "Duplicate index column");
-                    index_pk = makeIndexPathkeys(ec, intopfamily);
+                    if (pk->pk_strategy == BTLessStrategyNumber)
+                    {
+                        if (index_pk)
+                            elog(ERROR, "Duplicate index column");
+                        index_pk = pk;
+                    }
                     break;
                 case HvaultColumnLineIdx:
-                    if (line_pk)
-                        elog(ERROR, "Duplicate line_idx column");
-                    line_pk = makeIndexPathkeys(ec, intopfamily);
+                    if (pk->pk_strategy == BTLessStrategyNumber)
+                    {
+                        if (line_pk)
+                            elog(ERROR, "Duplicate index column");
+                        line_pk = pk;
+                    }
                     break;
                 case HvaultColumnSampleIdx:
-                    if (sample_pk)
-                        elog(ERROR, "Duplicate sample_idx column");
-                    sample_pk = makeIndexPathkeys(ec, intopfamily);
+                    if (pk->pk_strategy == BTLessStrategyNumber)
+                    {
+                        if (sample_pk)
+                            elog(ERROR, "Duplicate index column");
+                        sample_pk = pk;
+                    }
                     break;
                 case HvaultColumnCatalog:
-                    if (catalog_ec[var->varattno-1].ec == NULL)
-                    {
-                        catalog_ec[var->varattno-1].ec = ec;
-                        catalog_ec[var->varattno-1].attnum = var->varattno-1;
-                        catalog_ec[var->varattno-1].next = cur_ec;
-                        cur_ec = catalog_ec + var->varattno - 1;
-                    }
-                    else 
-                    {
-                        elog(ERROR, "Duplicate catalog column %s", 
-                             table(ctx)->columns[var->varattno-1].cat_name);
-                    }
+                    catalog_pk = lappend(catalog_pk, pk);
+                    catalog_attnum = lappend_int(catalog_attnum, 
+                                                 var->varattno - 1);
                     break;
                 default:
                     /*nop*/
                     break;
             }
-        }
+        }        
     }
 
     if (index_pk)
@@ -163,39 +152,24 @@ getSortPathKeys (HvaultPlannerContext * ctx)
     if (list_length(tails) == 0)
         tails = list_make1(NIL);
 
-
-    base_pk = makeNode(PathKey);
-    base_pk->pk_nulls_first = false;
-    for ( ; cur_ec != NULL ; cur_ec = cur_ec->next)
+    forboth(l, catalog_pk, m, catalog_attnum)
     {
-        base_pk->pk_eclass = cur_ec->ec;
-        if (!base_pk->pk_eclass)
-            continue;
+        PathKey * pk = lfirst(l);
+        AttrNumber attno = lfirst_int(m);
 
-        foreach(l, base_pk->pk_eclass->ec_opfamilies)
+        foreach(k, tails)
         {
-            base_pk->pk_opfamily = lfirst_oid(l);
-            foreach(m, tails)
-            {
-                List *tail = lfirst(m);
-                int desc;
-                for (desc = 0; desc < 2; desc++)
-                {
-                    SortInfo * sort;
-                    base_pk->pk_strategy = desc ? BTLessStrategyNumber : 
-                                                  BTGreaterStrategyNumber;
-                    sort = palloc(sizeof(SortInfo));
-                    sort->column = table(ctx)->columns[cur_ec->attnum].cat_name;
-                    sort->desc = desc;
-                    sort->pathkeys = list_make1(copyObject(base_pk));
-                    sort->pathkeys = list_concat(sort->pathkeys, tail);
-                }
-            }
+            List *tail = lfirst(k);
+            SortInfo * sort = palloc(sizeof(SortInfo));
+
+            sort->column = table(ctx)->columns[attno].cat_name;
+            sort->desc = pk->pk_strategy == BTGreaterStrategyNumber;
+            sort->pathkeys = list_make1(pk);
+            sort->pathkeys = list_concat(sort->pathkeys, tail);
+
+            ctx->sort_list = lappend(ctx->sort_list, sort);
         }
     }
-
-    pfree(base_pk);
-    pfree(catalog_ec);
 }
 
 static void
