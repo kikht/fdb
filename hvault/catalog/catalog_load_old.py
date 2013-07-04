@@ -59,17 +59,19 @@ prod_re["mod1kmds"] = re.compile("^M[OY]D1KMDS.*hdf$")
 
 # TODO: insert connection parameters here
 connection = psycopg2.connect();
+cursor = connection.cursor()
 query = "prepare catinsert( timestamp, timestamp, geometry, \
          text, text, text, text" + \
         ", text" * len(prod_re) + \
         ") as insert into " + table_name + \
-        " (starttime, stoptime, footprint, mod03, mod021km, mod02hkm, mod02qkm" + \
+        " (starttime, stoptime, footprint, mod03, mod021km, mod02hkm, mod02qkm, " + \
         ", ".join(prod_re.keys()) + ") values (" + \
-        ", ".join([ "${0}".format(i) for i in range(1, len(prod_re) + 4) ]) + ");"
+        ", ".join([ "${0}".format(i) for i in range(1, len(prod_re) + 8) ]) + ");"
+print query
 cursor.execute(query)
 
-query = "execute catinsert(" + ", ".join(["%s"] * (len(prod_re) + 3)) + ");"
-for path in glob.iglob("/mnt/ifs-gis/ftp/terra/modis/archive/2011/*/?????"):
+query = "execute catinsert(" + ", ".join(["%s"] * (len(prod_re) + 7)) + ");"
+for path in glob.iglob("/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????"):
     dirList = os.listdir(path)
 
     for mod03 in map(mod03_re.match, dirList):
@@ -89,6 +91,7 @@ for path in glob.iglob("/mnt/ifs-gis/ftp/terra/modis/archive/2011/*/?????"):
         prod_list.append(mod02_filter(dirList, mod02qkm_re, path + "/", time))        
         
         subdir = path + "/" + time
+
         if (os.path.isdir(subdir)):
             subdirList = os.listdir(subdir)
             for name in prod_re:
@@ -96,7 +99,7 @@ for path in glob.iglob("/mnt/ifs-gis/ftp/terra/modis/archive/2011/*/?????"):
         else:
             for name in prod_re:
                 prod_list.append(None)
-
+        
         cursor.execute(query, tuple(prod_list))
         print path, time
 
