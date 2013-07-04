@@ -125,6 +125,9 @@ CREATE FOREIGN TABLE test_catalog (
     Cloud_Mask                   bit(48)
         OPTIONS (type 'dataset', cat_name 'mod35', dataset 'Cloud_Mask',
                  bitmap_type 'prefix', bitmap_dims '1'),
+    Cloud_Mask_1byte           int2
+        OPTIONS (type 'dataset', cat_name 'mod35', dataset 'Cloud_Mask',
+                 prefix '1'),
     Cloud_Mask_QA                bit(80)
         OPTIONS (type 'dataset', cat_name 'mod35', dataset 'Quality_Assurance',
                  bitmap_type 'postfix', bitmap_dims '1'),
