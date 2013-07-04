@@ -132,13 +132,13 @@ CREATE FOREIGN TABLE modis500m (
     Snow_Cover_Pixel_QA         int2    OPTIONS (cat_name 'mod10', dataset 'Snow_Cover_Pixel_QA'),
 
 -- MOD09 layers
-    Surface_Reflectance_Band_1  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 1'),
-    Surface_Reflectance_Band_2  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 2'),
-    Surface_Reflectance_Band_3  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 3'),
-    Surface_Reflectance_Band_4  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 4'),
-    Surface_Reflectance_Band_5  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 5'),
-    Surface_Reflectance_Band_6  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 6'),
-    Surface_Reflectance_Band_7  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 7'),
+    Surface_Reflectance_Band_1  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance Band 1'),
+    Surface_Reflectance_Band_2  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance Band 2'),
+    Surface_Reflectance_Band_3  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance Band 3'),
+    Surface_Reflectance_Band_4  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance Band 4'),
+    Surface_Reflectance_Band_5  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance Band 5'),
+    Surface_Reflectance_Band_6  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance Band 6'),
+    Surface_Reflectance_Band_7  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance Band 7'),
     Reflectance_Band_Quality    int4    OPTIONS (cat_name 'mod09', dataset '500m Reflectance Band Quality')
 
 ) SERVER hvault_service
