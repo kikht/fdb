@@ -49,7 +49,7 @@ CREATE FOREIGN TABLE modis1km (
     Atmospheric_Optical_Depth_Band_QA int2    OPTIONS (cat_name 'mod09', dataset '1km Atmospheric Optical Depth Band QA'),
     Atmospheric_Optical_Depth_Band_CM int2    OPTIONS (cat_name 'mod09', dataset '1km Atmospheric Optical Depth Band CM'),
 
-    Band_3_Path_Radiance              float8  OPTIONS (cat_name 'mod09', dataset '1km Band 3 Path Radiance')
+    Band_3_Path_Radiance              float8  OPTIONS (cat_name 'mod09', dataset '1km Band 3 Path Radiance'),
 
 -- MOD35 layers
     Cloud_Mask                        bit(48) OPTIONS (cat_name 'mod35', bitmap_type 'prefix',  bitmap_dims '1', dataset 'Cloud_Mask'),
@@ -72,18 +72,18 @@ CREATE FOREIGN TABLE modis1km (
     Optical_Depth_Ratio_Small_Land                float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Optical_Depth_Ratio_Small_Land'),
     Optical_Depth_Ratio_Small_Land_And_Ocean      float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Optical_Depth_Ratio_Small_Land_And_Ocean'),
     Scattering_Angle                              float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Scattering_Angle'),
-    Quality_Assurance_Ocean                       bit(40) OPTIONS (cat_name 'mod04', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Ocean'),
-    Quality_Assurance_Land                        bit(40) OPTIONS (cat_name 'mod04', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Land'),
-    Quality_Assurance_Crit_Ref_Land               bit(40) OPTIONS (cat_name 'mod04', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Crit_Ref_Land'),
+    MOD04_Quality_Assurance_Ocean                 bit(40) OPTIONS (cat_name 'mod04', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Ocean'),
+    MOD04_Quality_Assurance_Land                  bit(40) OPTIONS (cat_name 'mod04', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Land'),
+    MOD04_Quality_Assurance_Crit_Ref_Land         bit(40) OPTIONS (cat_name 'mod04', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Crit_Ref_Land'),
     -- TODO: lot more
 
 -- MOD05 layers
     Water_Vapor_Near_Infrared                     float8  OPTIONS (cat_name 'mod05', dataset 'Water_Vapor_Near_Infrared'),
     Water_Vapor_Correction_Factors                int2    OPTIONS (cat_name 'mod05', dataset 'Water_Vapor_Correction_Factors'),
-    Quality_Assurance_Near_Infrared               bit(8)  OPTIONS (cat_name 'mod05', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Near_Infrared'),
+    MOD05_Quality_Assurance_Near_Infrared         bit(8)  OPTIONS (cat_name 'mod05', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Near_Infrared'),
 
     Water_Vapor_Infrared                          float8  OPTIONS (cat_name 'mod05', factor '5', dataset 'Water_Vapor_Infrared'),
-    Quality_Assurance_Infrared                    bit(40) OPTIONS (cat_name 'mod05', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared'),
+    MOD05_Quality_Assurance_Infrared              bit(40) OPTIONS (cat_name 'mod05', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared'),
 
 -- MOD07 layers
     K_Index                     float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'K_Index'),
@@ -99,9 +99,9 @@ CREATE FOREIGN TABLE modis1km (
     Water_Vapor_Low             float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Water_Vapor_Low'),
     Surface_Pressure            float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Surface_Pressure'),
 
-    Processing_Flag             int2    OPTIONS (cat_name 'mod07', factor '5', dataset 'Processing_Flag'),
-    Quality_Assurance           bit(80) OPTIONS (cat_name 'mod07', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance'),
-    Quality_Assurance_Infrared  bit(40) OPTIONS (cat_name 'mod07', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared')
+    MOD07_Processing_Flag             int2    OPTIONS (cat_name 'mod07', factor '5', dataset 'Processing_Flag'),
+    MOD07_Quality_Assurance           bit(80) OPTIONS (cat_name 'mod07', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance'),
+    MOD07_Quality_Assurance_Infrared  bit(40) OPTIONS (cat_name 'mod07', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared')
     --TODO:
     -- Retrieved_Height_Profile (20, 306, 270)
     -- Guess_Temperature_Profile (20, 306, 270)
@@ -127,19 +127,19 @@ CREATE FOREIGN TABLE modis500m (
     footprint geometry  OPTIONS (type 'footprint', cat_name 'mod03', factor '2'),
 
 -- MOD10 layers
-    Snow_Cover                       int2    OPTIONS (cat_name 'mod10', dataset 'Snow_Cover'),
-    Fractional_Snow_Cover            int2    OPTIONS (cat_name 'mod10', dataset 'Fractional_Snow_Cover'),
-    Snow_Cover_Pixel_QA              int2    OPTIONS (cat_name 'mod10', dataset 'Snow_Cover_Pixel_QA'),
+    Snow_Cover                  int2    OPTIONS (cat_name 'mod10', dataset 'Snow_Cover'),
+    Fractional_Snow_Cover       int2    OPTIONS (cat_name 'mod10', dataset 'Fractional_Snow_Cover'),
+    Snow_Cover_Pixel_QA         int2    OPTIONS (cat_name 'mod10', dataset 'Snow_Cover_Pixel_QA'),
 
 -- MOD09 layers
-    500m_Surface_Reflectance_Band_1  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 1'),
-    500m_Surface_Reflectance_Band_2  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 2'),
-    500m_Surface_Reflectance_Band_3  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 3'),
-    500m_Surface_Reflectance_Band_4  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 4'),
-    500m_Surface_Reflectance_Band_5  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 5'),
-    500m_Surface_Reflectance_Band_6  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 6'),
-    500m_Surface_Reflectance_Band_7  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 7'),
-    500m_Reflectance Band Quality    int4    OPTIONS (cat_name 'mod09', dataset '500m Reflectance Band Quality')
+    Surface_Reflectance_Band_1  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 1'),
+    Surface_Reflectance_Band_2  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 2'),
+    Surface_Reflectance_Band_3  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 3'),
+    Surface_Reflectance_Band_4  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 4'),
+    Surface_Reflectance_Band_5  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 5'),
+    Surface_Reflectance_Band_6  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 6'),
+    Surface_Reflectance_Band_7  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance_Band 7'),
+    Reflectance_Band_Quality    int4    OPTIONS (cat_name 'mod09', dataset '500m Reflectance Band Quality')
 
 ) SERVER hvault_service
   OPTIONS (catalog 'catalog',
