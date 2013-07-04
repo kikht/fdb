@@ -6,7 +6,7 @@ import re
 import psycopg2
 from osgeo import gdal
 
-table_name = "catalog2"
+table_name = "catalog3"
 
 prod_re = dict()
 prod_re["mod03"] = re.compile("^M[OY]D03.*hdf$")
