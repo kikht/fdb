@@ -58,6 +58,7 @@ update hdf_catalog set mod35 = '/home/kikht/Downloads/hdf/MOD35_L2.A2013110.0115
     where starttime = '2013-04-20 01:15:01.349555';
 update hdf_catalog set mod35 = '/home/kikht/Downloads/hdf/MOD35_L2.A2013110.0250.005.2013111064046.hdf' 
     where starttime = '2013-04-20 02:50:00.159843';    
+update hdf_catalog set filename = 'lalalalalala' where starttime = '2013-04-20 02:50:00.159843';
 
 ANALYZE hdf_catalog;
 

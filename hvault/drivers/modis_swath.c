@@ -398,6 +398,9 @@ hvaultModisSwathClose (HvaultFileDriver * drv)
         file->sd_id = FAIL;
         file->filename = NULL;
     }
+
+    driver->num_lines = 0;
+    driver->num_samples = 0;
 }
 
 static void 
