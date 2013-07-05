@@ -29,8 +29,13 @@ def proc_metadata(mod03):
     coord["south"] = gd.GetMetadataItem("SOUTHBOUNDINGCOORDINATE")
     coord["east"] = gd.GetMetadataItem("EASTBOUNDINGCOORDINATE")
     coord["west"] = gd.GetMetadataItem("WESTBOUNDINGCOORDINATE")
-    fp = "POLYGON(( {north} {west}, {north} {east}, {south} {east}, \
-                    {south} {west}, {north} {west} ))".format(**coord)
+    if coord["east"] < 0:
+        coord["east"] += 360.0
+    if coord["west"] < 0:
+        coord["east"] += 360.0
+
+    fp = "POLYGON(( {west} {north}, {east} {north}, {east} {south}, \
+                    {west} {south}, {west} {north} ))".format(**coord)
     return (startdate + " " + starttime, stopdate + " " + stoptime, fp)
 
 def list_filter(plist, re, prefix):
@@ -169,5 +174,7 @@ for path in glob.iglob("/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????/????"):
 
     cursor.execute(query, tuple(prod_list))
     print path
+
+cursor.execute("delete from " + table_name + " where ST_Ymax(footprint) = 90")
 
 connection.commit()

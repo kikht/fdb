@@ -36,7 +36,7 @@ SELECT file_id, line_id, sample_id,
        Surface_Reflectance_Band_4, 
        ST_AsText(point) point 
     FROM test_catalog 
-    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT( 43.19 64.90)'));
+    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT(64.90 43.19)'));
 
 SELECT file_id, line_id, sample_id, 
        Surface_Reflectance_Band_1, 
@@ -44,7 +44,7 @@ SELECT file_id, line_id, sample_id,
        Surface_Reflectance_Band_4, 
        ST_AsText(point) point 
     FROM test_catalog 
-    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT( 43.19 65.00)'));
+    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT(65.00 43.19)'));
 
 SELECT file_id, line_id, sample_id, 
        Surface_Reflectance_Band_1, 
@@ -52,7 +52,7 @@ SELECT file_id, line_id, sample_id,
        Surface_Reflectance_Band_4, 
        ST_AsText(point) point 
     FROM test_catalog 
-    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT( 61.16 100.90)'));
+    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT(100.90 61.16)'));
 
 SELECT file_id, line_id, sample_id, 
        Surface_Reflectance_Band_1, 
@@ -60,7 +60,7 @@ SELECT file_id, line_id, sample_id,
        Surface_Reflectance_Band_4, 
        ST_AsText(point) point 
     FROM test_catalog 
-    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT( 61.16 65.90)'));
+    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT(65.90 61.16)'));
 
 SELECT file_id, line_id, sample_id, 
        Surface_Reflectance_Band_1, 
@@ -68,7 +68,7 @@ SELECT file_id, line_id, sample_id,
        Surface_Reflectance_Band_4, 
        ST_AsText(point) point 
     FROM test_catalog 
-    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT( 61.16 69.90)'));
+    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT(69.90 61.16)'));
 
 SELECT file_id, line_id, sample_id, 
        Surface_Reflectance_Band_1, 
@@ -76,15 +76,15 @@ SELECT file_id, line_id, sample_id,
        Surface_Reflectance_Band_4, 
        ST_AsText(point) point 
     FROM test_catalog 
-    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT( 61.16 100.90)')) 
+    WHERE ST_Contains(footprint, ST_GeometryFromText('POINT(100.90 61.16)')) 
     ORDER BY time;
 
 
 SELECT file_id, line_id, sample_id 
     FROM test_catalog 
-    WHERE ST_Within(point, ST_GeometryFromText('POLYGON((61.16 65.89,61.16 65.92,61.15 65.92,61.15 65.89,61.16 65.89))')) 
+    WHERE ST_Within(point, ST_GeometryFromText('POLYGON((65.89 61.16,65.92 61.16,65.92 61.15,65.89 61.15,65.89 61.16))')) 
     LIMIT 10;
 SELECT file_id, line_id, sample_id 
     FROM test_catalog 
-    WHERE ST_Contains(point, ST_GeometryFromText('POLYGON((61.16 66.89,61.16 66.92,61.15 66.92,61.15 66.89,61.16 66.89))')) 
+    WHERE ST_Contains(point, ST_GeometryFromText('POLYGON((66.89 61.16,66.92 61.16,66.92 61.15,66.89 61.15,66.89 61.16))')) 
     LIMIT 10;

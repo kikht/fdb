@@ -290,20 +290,20 @@ get_modis_swath_info(ModisSwathInfo *info,
         }
 
         ptarray = ptarray_construct(false, false, 5);
-        point.x = north;
-        point.y = west;
+        point.y = north;
+        point.x = west;
         ptarray_set_point4d(ptarray, 0, &point);
-        point.x = north;
-        point.y = east;
+        point.y = north;
+        point.x = east;
         ptarray_set_point4d(ptarray, 1, &point);
-        point.x = south;
-        point.y = east;
+        point.y = south;
+        point.x = east;
         ptarray_set_point4d(ptarray, 2, &point);
-        point.x = south;
-        point.y = west;
+        point.y = south;
+        point.x = west;
         ptarray_set_point4d(ptarray, 3, &point);
-        point.x = north;
-        point.y = west;
+        point.y = north;
+        point.x = west;
         ptarray_set_point4d(ptarray, 4, &point);
 
         poly = lwpoly_construct(SRID_UNKNOWN, NULL, 1, &ptarray);

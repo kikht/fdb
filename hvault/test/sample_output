@@ -1,1150 +1,147 @@
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 23 strtype: int4 type: 10
-DEBUG:  processing EquivalenceClass {EQUIVALENCECLASS :ec_opfamilies (o 1976) :ec_collation 0 :ec_members ({EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 70} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23}) :ec_sources <> :ec_derives <> :ec_relids (b 1) :ec_has_const false :ec_has_volatile false :ec_below_outer_join false :ec_broken false :ec_sortref 1}
-DEBUG:  Selected path quals: <>
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 10)
-DEBUG:  options for att 22: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Reflectance\ Band\ Quality" :defaction 0} {DEFELEM :defnamespace <> :defname type :arg "int4" :defaction 0})
-DEBUG:  creating buffer for sds 1km Reflectance Band Quality
-DEBUG:  SDS buffers: 1
-DEBUG:  SDS buffers: 1
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 0.920000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013011.0041.005.2013012073957.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 0.710000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 0.910000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0115.005.2013111065535.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 0.930000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0250.005.2013111065300.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 0.930000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 0.900000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 0.700000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 0.920000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 0.780000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013109.0030.005.2013110064926.hdf
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.970000 sec
-          avg           | file_id 
-------------------------+---------
- 0.99812305811643661183 |       6
- 0.89482176510394306961 |       4
- 0.99979007647474005137 |       5
- 0.99951866754953394794 |       8
- 0.99894092308140084843 |       1
- 0.64690513599713987336 |       2
- 0.99954404337558266038 |       9
- 0.99932511587633066775 |       3
- 0.52876561938600343327 |       7
- 0.96737453704040573088 |      10
+ file_id |           time           | index | line_id | sample_id |                   point                    |                                                                                         footprint                                                                                          | surface_reflectance_band_1 | surface_reflectance_band_2 | surface_reflectance_band_3 | surface_reflectance_band_4 | surface_reflectance_band_5 | surface_reflectance_band_6 | surface_reflectance_band_7 | surface_reflectance_band_8 | surface_reflectance_band_9 | surface_reflectance_band_10 | surface_reflectance_band_11 | surface_reflectance_band_12 | surface_reflectance_band_13 | surface_reflectance_band_14 | surface_reflectance_band_15 | surface_reflectance_band_16 | cloud_mask | cloud_mask_1byte | cloud_mask_qa | reflectance_band_quality 
+---------+--------------------------+-------+---------+-----------+--------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+------------+------------------+---------------+--------------------------
+      34 | 2013-04-20 04:30:00.3069 |     0 |       0 |         0 | 0101000000000000E01A61544000000020F76F5140 | 0103000000010000000500000000000000DF5C5440000000C06E70514000000060FF64544000000000A9705140000000E056655440000000E07F6F514000000040365D544000000000456F514000000000DF5C5440000000C06E705140 |                     0.9296 |                     0.8947 |                     0.9729 |                     0.9561 |                     0.5405 |                     0.1863 |                     0.0883 |                     0.9619 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
+      34 | 2013-04-20 04:30:00.3069 |     1 |       0 |         1 | 0101000000000000603B695440000000A031705140 | 0103000000010000000500000000000060FF64544000000000A9705140000000C0166D544000000000E2705140000000C06C6D5440000000E0B96F5140000000E056655440000000E07F6F514000000060FF64544000000000A9705140 |                     0.8841 |                     0.8476 |                     0.9396 |                      0.914 |                      0.528 |                     0.1991 |                     0.1131 |                     0.9386 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
+      34 | 2013-04-20 04:30:00.3069 |     2 |       0 |         2 | 01010000000000004048715440000000206A705140 | 01030000000100000005000000000000C0166D544000000000E270514000000040257554400000006019715140000000C07475544000000000F26F5140000000C06C6D5440000000E0B96F5140000000C0166D544000000000E2705140 |                     0.7034 |                     0.6552 |                     0.8286 |                     0.7556 |                      0.479 |                     0.3443 |                     0.2871 |                     0.8687 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
+      34 | 2013-04-20 04:30:00.3069 |     3 |       0 |         3 | 0101000000000000C05179544000000020A1705140 | 010300000001000000050000000000004025755440000000601971514000000060217D5440000000C04E715140000000A06D7D54400000004028705140000000C07475544000000000F26F514000000040257554400000006019715140 |                     0.7748 |                      0.729 |                     0.8789 |                     0.8204 |                     0.5517 |                       0.45 |                     0.3949 |                     0.9046 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
+      34 | 2013-04-20 04:30:00.3069 |     4 |       0 |         4 | 0101000000000000203D815440000000C0D5705140 | 0103000000010000000500000000000060217D5440000000C04E71514000000020198554400000008082715140000000005F855440000000C05C705140000000A06D7D5440000000402870514000000060217D5440000000C04E715140 |                     0.8244 |                     0.7806 |                     0.9118 |                      0.866 |                     0.5685 |                     0.4363 |                     0.3747 |                      0.925 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
+      34 | 2013-04-20 04:30:00.3069 |     5 |       0 |         5 | 0101000000000000003B8954400000008009715140 | 010300000001000000050000000000002019855440000000808271514000000000158D544000000000B5715140000000605B8D54400000002090705140000000005F855440000000C05C70514000000020198554400000008082715140 |                     0.7526 |                     0.7003 |                     0.8595 |                     0.8008 |                      0.466 |                     0.2792 |                     0.2128 |                     0.8889 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
+      34 | 2013-04-20 04:30:00.3069 |     6 |       0 |         6 | 01010000000000004035915440000000A03B715140 | 0103000000010000000500000000000000158D544000000000B571514000000020CC94544000000060E4715140000000E02695544000000000C1705140000000605B8D5440000000209070514000000000158D544000000000B5715140 |                     0.7732 |                     0.7226 |                     0.8725 |                      0.818 |                     0.4886 |                     0.2706 |                      0.182 |                     0.9021 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
+      34 | 2013-04-20 04:30:00.3069 |     7 |       0 |         7 | 0101000000000000E0BD985440000000C069715140 | 0103000000010000000500000000000020CC94544000000060E4715140000000C06D9C5440000000001272514000000040D29C544000000080EF705140000000E02695544000000000C170514000000020CC94544000000060E4715140 |                     0.8739 |                     0.8405 |                     0.9325 |                     0.9033 |                     0.5539 |                     0.2778 |                      0.189 |                     0.9374 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
+      34 | 2013-04-20 04:30:00.3069 |     8 |       0 |         8 | 01010000000000004082A05440000000E097715140 | 01030000000100000005000000000000C06D9C544000000000127251400000002038A45440000000003F725140000000608CA45440000000401D71514000000040D29C544000000080EF705140000000C06D9C54400000000012725140 |                     0.8553 |                      0.821 |                      0.934 |                     0.8937 |                     0.6319 |                     0.5189 |                     0.4447 |                     0.9453 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
+      34 | 2013-04-20 04:30:00.3069 |     9 |       0 |         9 | 01010000000000004042A8544000000060C4715140 | 010300000001000000050000000000002038A45440000000003F725140000000E0F3AB5440000000606A725140000000202BAC5440000000C048715140000000608CA45440000000401D7151400000002038A45440000000003F725140 |                     0.8305 |                     0.7939 |                     0.9166 |                     0.8718 |                     0.6458 |                     0.5643 |                     0.4907 |                      0.933 |                            |                             |                             |                             |                             |                             |                             |                             |            |                  |               |               1073741824
 (10 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  processing EquivalenceClass {EQUIVALENCECLASS :ec_opfamilies (o 1976) :ec_collation 0 :ec_members ({EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23} {EQUIVALENCEMEMBER :em_expr {VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123} :em_relids (b 2) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23}) :ec_sources ({RESTRICTINFO :clause {OPEXPR :opno 96 :opfuncid 65 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111} {VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123}) :location 121} :is_pushed_down true :outerjoin_delayed false :can_join true :pseudoconstant false :clause_relids (b 1 2) :required_relids (b 1 2) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b 2) :orclause <> :norm_selec -1.0000 :outer_selec -1.0000 :mergeopfamilies (o 1976) :left_em {EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23} :right_em {EQUIVALENCEMEMBER :em_expr {VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123} :em_relids (b 2) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23} :outer_is_left false :hashjoinoperator 0}) :ec_derives <> :ec_relids (b 1 2) :ec_has_const false :ec_has_volatile false :ec_below_outer_join false :ec_broken false :ec_sortref 0}
-DEBUG:  Detected catalog qual {OPEXPR :opno 96 :opfuncid 65 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123} {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111}) :location -1}
-DEBUG:  Selected path quals: ({RESTRICTINFO :clause {OPEXPR :opno 96 :opfuncid 65 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123} {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111}) :location -1} :is_pushed_down true :outerjoin_delayed false :can_join true :pseudoconstant false :clause_relids (b 1 2) :required_relids (b 1 2) :outer_relids (b) :nullable_relids (b) :left_relids (b 2) :right_relids (b 1) :orclause <> :norm_selec -1.0000 :outer_selec -1.0000 :mergeopfamilies (o 1976) :left_em {EQUIVALENCEMEMBER :em_expr {VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123} :em_relids (b 2) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23} :right_em {EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23} :outer_is_left false :hashjoinoperator 96})
-DEBUG:  Skipping external clause {OPEXPR :opno 96 :opfuncid 65 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123} {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111}) :location -1}
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  SDS buffers: 2
-DEBUG:  SDS buffers: 2
-DEBUG:  in hvaultReScan
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultReScan
-DEBUG:  File processed in 3.640000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013011.0041.005.2013012073957.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultReScan
-DEBUG:  File processed in 2.750000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultReScan
-DEBUG:  File processed in 3.590000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0115.005.2013111065535.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultReScan
-DEBUG:  File processed in 3.600000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0250.005.2013111065300.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultReScan
-DEBUG:  File processed in 3.640000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultReScan
-DEBUG:  File processed in 3.730000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultReScan
-DEBUG:  File processed in 2.620000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultReScan
-DEBUG:  File processed in 3.610000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultReScan
-DEBUG:  File processed in 2.970000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013109.0030.005.2013110064926.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 3.600000 sec
+          avg           | file_id 
+------------------------+---------
+ 0.52876561938600343327 |      40
+ 0.99894092308140084843 |      34
+ 0.96737453704040573088 |      43
+ 0.99932511587633066775 |      36
+ 0.99812305811643661183 |      39
+ 0.89482176510394306961 |      37
+ 0.99951866754953394794 |      41
+ 0.99954404337558266038 |      42
+ 0.64690513599713987336 |      35
+ 0.99979007647474005137 |      38
+(10 rows)
+
  file_id | line_id | sample_id |                st_astext                 
 ---------+---------+-----------+------------------------------------------
-       1 |       0 |         0 | POINT(69.7494583129883 81.5172653198242)
-       2 |       0 |        45 | POINT(69.2457962036133 143.642822265625)
-       2 |    1569 |      1353 | POINT(50.3677749633789 173.70002746582)
-       3 |       0 |        37 | POINT(65.8117370605469 60.8484115600586)
-       3 |       0 |      1353 | POINT(59.3021583557129 102.043792724609)
-       3 |    2029 |         0 | POINT(47.8346557617188 57.089771270752)
-       4 |    2029 |         0 | POINT(41.859676361084 130.707412719727)
-       5 |       0 |         0 | POINT(73.7170257568359 105.128486633301)
-       5 |    2029 |      1353 | POINT(50.8373680114746 141.614318847656)
-       6 |       0 |        31 | POINT(63.4858741760254 54.1235160827637)
-       6 |    2029 |         0 | POINT(45.5104751586914 50.7621994018555)
-       6 |    2029 |      1353 | POINT(41.3996353149414 79.2089004516602)
-       7 |       0 |         0 | POINT(74.1146621704102 63.2833709716797)
-       8 |    2029 |         0 | POINT(43.1992645263672 64.4583587646484)
-       8 |    2029 |      1353 | POINT(39.2371444702148 91.8786849975586)
-       9 |       0 |         0 | POINT(76.3822174072266 29.6308860778809)
-      10 |    2029 |      1353 | POINT(43.8771934509277 171.864349365234)
+      34 |       0 |         0 | POINT(81.5172653198242 69.7494583129883)
+      35 |       0 |        45 | POINT(143.642822265625 69.2457962036133)
+      35 |    1569 |      1353 | POINT(173.70002746582 50.3677749633789)
+      36 |       0 |        37 | POINT(60.8484115600586 65.8117370605469)
+      36 |       0 |      1353 | POINT(102.043792724609 59.3021583557129)
+      36 |    2029 |         0 | POINT(57.089771270752 47.8346557617188)
+      39 |       0 |        31 | POINT(54.1235160827637 63.4858741760254)
+      39 |    2029 |         0 | POINT(50.7621994018555 45.5104751586914)
+      39 |    2029 |      1353 | POINT(79.2089004516602 41.3996353149414)
+      40 |       0 |         0 | POINT(63.2833709716797 74.1146621704102)
+      41 |    2029 |         0 | POINT(64.4583587646484 43.1992645263672)
+      41 |    2029 |      1353 | POINT(91.8786849975586 39.2371444702148)
+      42 |       0 |         0 | POINT(29.6308860778809 76.3822174072266)
+      43 |    2029 |      1353 | POINT(171.864349365234 43.8771934509277)
+      37 |    2029 |         0 | POINT(130.707412719727 41.859676361084)
+      38 |       0 |         0 | POINT(105.128486633301 73.7170257568359)
+      38 |    2029 |      1353 | POINT(141.614318847656 50.8373680114746)
 (17 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  processing EquivalenceClass {EQUIVALENCECLASS :ec_opfamilies (o 1976) :ec_collation 0 :ec_members ({EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23} {EQUIVALENCEMEMBER :em_expr {VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123} :em_relids (b 2) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23}) :ec_sources ({RESTRICTINFO :clause {OPEXPR :opno 96 :opfuncid 65 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111} {VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123}) :location 121} :is_pushed_down true :outerjoin_delayed false :can_join true :pseudoconstant false :clause_relids (b 1 2) :required_relids (b 1 2) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b 2) :orclause <> :norm_selec -1.0000 :outer_selec -1.0000 :mergeopfamilies (o 1976) :left_em {EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23} :right_em {EQUIVALENCEMEMBER :em_expr {VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123} :em_relids (b 2) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23} :outer_is_left false :hashjoinoperator 0}) :ec_derives <> :ec_relids (b 1 2) :ec_has_const false :ec_has_volatile false :ec_below_outer_join false :ec_broken false :ec_sortref 0}
-DEBUG:  Detected footprint qual {BOOLEXPR :boolop not :args ({OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 2 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 5 :location 148} {VAR :varno 1 :varattno 4 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 4 :location 163}) :location 160}) :location -1}
-DEBUG:  Detected catalog qual {OPEXPR :opno 96 :opfuncid 65 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 2 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 2 :varoattno 1 :location 123} {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 111}) :location -1}
-DEBUG:  Selected path quals: <>
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  SDS buffers: 2
-DEBUG:  SDS buffers: 2
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 1.790000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013011.0041.005.2013012073957.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 1.390000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 1.810000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0115.005.2013111065535.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 1.790000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0250.005.2013111065300.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 1.790000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 1.780000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 1.300000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 1.790000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 1.470000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013109.0030.005.2013110064926.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 1.680000 sec
  file_id | line_id | sample_id | st_astext 
 ---------+---------+-----------+-----------
 (0 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  col: 5 strtype: footprint type: 2
-DEBUG:  col: 6 strtype: time type: 6
-DEBUG:  col: 23 strtype: int4 type: 10
-DEBUG:  Selected path quals: <>
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 2 6 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 10)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  options for att 6: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 1" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 1
-DEBUG:  options for att 7: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 2" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 2
-DEBUG:  options for att 8: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 3" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 3
-DEBUG:  options for att 9: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 4" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 4
-DEBUG:  options for att 10: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 5" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 5
-DEBUG:  options for att 11: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 6" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 6
-DEBUG:  options for att 12: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 7" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 7
-DEBUG:  options for att 13: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 8" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 8
-DEBUG:  options for att 14: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 9" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 9
-DEBUG:  options for att 15: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 10" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 10
-DEBUG:  options for att 16: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 11" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 11
-DEBUG:  options for att 17: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 12" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 12
-DEBUG:  options for att 18: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 13" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 13
-DEBUG:  options for att 19: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 14" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 14
-DEBUG:  options for att 20: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 15" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 15
-DEBUG:  options for att 21: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 16" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 16
-DEBUG:  options for att 22: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Reflectance\ Band\ Quality" :defaction 0} {DEFELEM :defnamespace <> :defname type :arg "int4" :defaction 0})
-DEBUG:  creating buffer for sds 1km Reflectance Band Quality
-DEBUG:  SDS buffers: 19
-DEBUG:  SDS buffers: 19
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 5.870000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013011.0041.005.2013012073957.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 4.740000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 5.880000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0115.005.2013111065535.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 5.900000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0250.005.2013111065300.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 5.840000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 6.110000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 4.570000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 6.000000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  File processed in 4.940000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013109.0030.005.2013110064926.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 2
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  Opening SDS 1km Surface Reflectance Band 5
-DEBUG:  Opening SDS 1km Surface Reflectance Band 6
-DEBUG:  Opening SDS 1km Surface Reflectance Band 7
-DEBUG:  Opening SDS 1km Surface Reflectance Band 8
-DEBUG:  Opening SDS 1km Surface Reflectance Band 9
-DEBUG:  Opening SDS 1km Surface Reflectance Band 10
-DEBUG:  Opening SDS 1km Surface Reflectance Band 11
-DEBUG:  Opening SDS 1km Surface Reflectance Band 12
-DEBUG:  Opening SDS 1km Surface Reflectance Band 13
-DEBUG:  Opening SDS 1km Surface Reflectance Band 14
-DEBUG:  Opening SDS 1km Surface Reflectance Band 15
-DEBUG:  Opening SDS 1km Surface Reflectance Band 16
-DEBUG:  Opening SDS 1km Reflectance Band Quality
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 6.030000 sec
- file_id | line_id | sample_id | point | footprint | time | surface_reflectance_band_1 | surface_reflectance_band_2 | surface_reflectance_band_3 | surface_reflectance_band_4 | surface_reflectance_band_5 | surface_reflectance_band_6 | surface_reflectance_band_7 | surface_reflectance_band_8 | surface_reflectance_band_9 | surface_reflectance_band_10 | surface_reflectance_band_11 | surface_reflectance_band_12 | surface_reflectance_band_13 | surface_reflectance_band_14 | surface_reflectance_band_15 | surface_reflectance_band_16 | reflectance_band_quality 
----------+---------+-----------+-------+-----------+------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+--------------------------
+ file_id | time | index | line_id | sample_id | point | footprint | surface_reflectance_band_1 | surface_reflectance_band_2 | surface_reflectance_band_3 | surface_reflectance_band_4 | surface_reflectance_band_5 | surface_reflectance_band_6 | surface_reflectance_band_7 | surface_reflectance_band_8 | surface_reflectance_band_9 | surface_reflectance_band_10 | surface_reflectance_band_11 | surface_reflectance_band_12 | surface_reflectance_band_13 | surface_reflectance_band_14 | surface_reflectance_band_15 | surface_reflectance_band_16 | cloud_mask | cloud_mask_1byte | cloud_mask_qa | reflectance_band_quality 
+---------+------+-------+---------+-----------+-------+-----------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+-----------------------------+------------+------------------+---------------+--------------------------
 (0 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  processing EquivalenceClass {EQUIVALENCECLASS :ec_opfamilies (o 1976) :ec_collation 0 :ec_members ({EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 16} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23}) :ec_sources <> :ec_derives <> :ec_relids (b 1) :ec_has_const false :ec_has_volatile false :ec_below_outer_join false :ec_broken false :ec_sortref 1}
-DEBUG:  Selected path quals: <>
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  SDS buffers: 1
-DEBUG:  SDS buffers: 1
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.670000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013011.0041.005.2013012073957.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.520000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.640000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0115.005.2013111065535.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.660000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0250.005.2013111065300.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.660000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.660000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.510000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.660000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.550000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013109.0030.005.2013110064926.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.680000 sec
  file_id 
 ---------
-       6
-       4
-       5
-       8
-       1
-       2
-       9
-       3
-       7
-      10
+      40
+      34
+      43
+      36
+      39
+      37
+      41
+      42
+      35
+      38
 (10 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  processing EquivalenceClass {EQUIVALENCECLASS :ec_opfamilies (o 1976) :ec_collation 0 :ec_members ({EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 16} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23}) :ec_sources <> :ec_derives <> :ec_relids (b 1) :ec_has_const false :ec_has_volatile false :ec_below_outer_join false :ec_broken false :ec_sortref 1}
-DEBUG:  Selected path quals: <>
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 0 0 0 0 0 7 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  options for att 6: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 1" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 1
-DEBUG:  SDS buffers: 1
-DEBUG:  SDS buffers: 1
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.350000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013011.0041.005.2013012073957.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.280000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.350000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0115.005.2013111065535.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.350000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0250.005.2013111065300.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.350000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.350000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.260000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.360000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.280000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013109.0030.005.2013110064926.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.360000 sec
  file_id 
 ---------
-       7
+      40
 (1 row)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  processing EquivalenceClass {EQUIVALENCECLASS :ec_opfamilies (o 1976) :ec_collation 0 :ec_members ({EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 17} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23}) :ec_sources <> :ec_derives <> :ec_relids (b 1) :ec_has_const false :ec_has_volatile false :ec_below_outer_join false :ec_broken false :ec_sortref 1}
-DEBUG:  Selected path quals: <>
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 0 0 0 0 0 7 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  options for att 6: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 1" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 1
-DEBUG:  SDS buffers: 1
-DEBUG:  SDS buffers: 1
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.350000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013011.0041.005.2013012073957.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.270000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.350000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0115.005.2013111065535.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.360000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0250.005.2013111065300.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.350000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.360000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.270000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.350000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  File processed in 0.290000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013109.0030.005.2013110064926.hdf
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.350000 sec
  count | file_id 
 -------+---------
- 67700 |       7
+ 67700 |      40
 (1 row)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  processing EquivalenceClass {EQUIVALENCECLASS :ec_opfamilies (o 1976) :ec_collation 0 :ec_members ({EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 47} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 23}) :ec_sources <> :ec_derives <> :ec_relids (b 1) :ec_has_const false :ec_has_volatile false :ec_below_outer_join false :ec_broken false :ec_sortref 1}
-DEBUG:  Selected path quals: <>
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  SDS buffers: 1
-DEBUG:  SDS buffers: 1
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.660000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013011.0041.005.2013012073957.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.500000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.650000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0115.005.2013111065535.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.650000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0250.005.2013111065300.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.660000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.650000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.470000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.660000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  File processed in 0.540000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013109.0030.005.2013110064926.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.660000 sec
- max  
-------
- 2029
- 2029
- 2029
- 2029
- 2029
- 1569
- 1669
- 2029
- 1479
- 2029
+ max  |  max   
+------+--------
+ 1479 |    1.6
+ 2029 | 1.3509
+ 2029 | 1.3141
+ 2029 | 1.2988
+ 2029 |    1.6
+ 2029 | 1.2713
+ 2029 |    1.6
+ 1669 | 1.3887
+ 1569 |    1.6
+ 2029 | 1.2132
 (10 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  col: 5 strtype: footprint type: 2
-DEBUG:  Detected footprint qual {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 -72 30 -123 -21 81 -104 69 64 -102 -103 -103 -103 -103 57 80 64 ]}) :location 10}
-DEBUG:  Selected path quals: ({RESTRICTINFO :clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 -72 30 -123 -21 81 -104 69 64 -102 -103 -103 -103 -103 57 80 64 ]}) :location 10} :is_pushed_down true :outerjoin_delayed false :can_join false :pseudoconstant false :clause_relids (b 1) :required_relids (b 1) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b) :orclause <> :norm_selec 0.0000 :outer_selec -1.0000 :mergeopfamilies <> :left_em <> :right_em <> :outer_is_left false :hashjoinoperator 0})
-DEBUG:  Skipping external clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 -72 30 -123 -21 81 -104 69 64 -102 -103 -103 -103 -103 57 80 64 ]}) :location 10}
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 2 0 7 0 7 7 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  options for att 6: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 1" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 1
-DEBUG:  options for att 8: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 3" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 3
-DEBUG:  options for att 9: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 4" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 4
-DEBUG:  SDS buffers: 5
-DEBUG:  SDS buffers: 5
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.300000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.300000 sec
  file_id | line_id | sample_id | surface_reflectance_band_1 | surface_reflectance_band_3 | surface_reflectance_band_4 |                  point                  
 ---------+---------+-----------+----------------------------+----------------------------+----------------------------+-----------------------------------------
-       8 |    2029 |         8 |                     0.3415 |                     0.2796 |                     0.3295 | POINT(43.191535949707 64.9233245849609)
+      41 |    2029 |         8 |                     0.3415 |                     0.2796 |                     0.3295 | POINT(64.9233245849609 43.191535949707)
 (1 row)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  col: 5 strtype: footprint type: 2
-DEBUG:  Detected footprint qual {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 -72 30 -123 -21 81 -104 69 64 0 0 0 0 0 64 80 64 ]}) :location 10}
-DEBUG:  Selected path quals: ({RESTRICTINFO :clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 -72 30 -123 -21 81 -104 69 64 0 0 0 0 0 64 80 64 ]}) :location 10} :is_pushed_down true :outerjoin_delayed false :can_join false :pseudoconstant false :clause_relids (b 1) :required_relids (b 1) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b) :orclause <> :norm_selec 0.0000 :outer_selec -1.0000 :mergeopfamilies <> :left_em <> :right_em <> :outer_is_left false :hashjoinoperator 0})
-DEBUG:  Skipping external clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 -72 30 -123 -21 81 -104 69 64 0 0 0 0 0 64 80 64 ]}) :location 10}
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 2 0 7 0 7 7 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  options for att 6: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 1" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 1
-DEBUG:  options for att 8: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 3" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 3
-DEBUG:  options for att 9: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 4" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 4
-DEBUG:  SDS buffers: 5
-DEBUG:  SDS buffers: 5
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.300000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.300000 sec
  file_id | line_id | sample_id | surface_reflectance_band_1 | surface_reflectance_band_3 | surface_reflectance_band_4 |                  point                   
 ---------+---------+-----------+----------------------------+----------------------------+----------------------------+------------------------------------------
-       8 |    2029 |         9 |                      0.437 |                     0.3742 |                     0.4257 | POINT(43.1904678344727 64.9797286987305)
+      41 |    2029 |         9 |                      0.437 |                     0.3742 |                     0.4257 | POINT(64.9797286987305 43.1904678344727)
 (1 row)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  col: 5 strtype: footprint type: 2
-DEBUG:  Detected footprint qual {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 57 89 64 ]}) :location 10}
-DEBUG:  Selected path quals: ({RESTRICTINFO :clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 57 89 64 ]}) :location 10} :is_pushed_down true :outerjoin_delayed false :can_join false :pseudoconstant false :clause_relids (b 1) :required_relids (b 1) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b) :orclause <> :norm_selec 0.0000 :outer_selec -1.0000 :mergeopfamilies <> :left_em <> :right_em <> :outer_is_left false :hashjoinoperator 0})
-DEBUG:  Skipping external clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 57 89 64 ]}) :location 10}
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 2 0 7 0 7 7 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  options for att 6: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 1" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 1
-DEBUG:  options for att 8: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 3" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 3
-DEBUG:  options for att 9: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 4" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 4
-DEBUG:  SDS buffers: 5
-DEBUG:  SDS buffers: 5
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.300000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.300000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.220000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.300000 sec
  file_id | line_id | sample_id | surface_reflectance_band_1 | surface_reflectance_band_3 | surface_reflectance_band_4 |                  point                   
 ---------+---------+-----------+----------------------------+----------------------------+----------------------------+------------------------------------------
-       1 |     871 |       493 |                      0.538 |                     0.5312 |                     0.5486 | POINT(61.1612358093262 100.901153564453)
-       7 |    1043 |      1181 |                     0.5554 |                     0.6863 |                     0.5862 | POINT(61.1577568054199 100.909942626953)
+      34 |     871 |       493 |                      0.538 |                     0.5312 |                     0.5486 | POINT(100.901153564453 61.1612358093262)
+      40 |    1043 |      1181 |                     0.5554 |                     0.6863 |                     0.5862 | POINT(100.909942626953 61.1577568054199)
 (2 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  col: 5 strtype: footprint type: 2
-DEBUG:  Detected footprint qual {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 121 80 64 ]}) :location 10}
-DEBUG:  Selected path quals: ({RESTRICTINFO :clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 121 80 64 ]}) :location 10} :is_pushed_down true :outerjoin_delayed false :can_join false :pseudoconstant false :clause_relids (b 1) :required_relids (b 1) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b) :orclause <> :norm_selec 0.0000 :outer_selec -1.0000 :mergeopfamilies <> :left_em <> :right_em <> :outer_is_left false :hashjoinoperator 0})
-DEBUG:  Skipping external clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 121 80 64 ]}) :location 10}
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 2 0 7 0 7 7 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  options for att 6: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 1" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 1
-DEBUG:  options for att 8: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 3" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 3
-DEBUG:  options for att 9: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 4" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 4
-DEBUG:  SDS buffers: 5
-DEBUG:  SDS buffers: 5
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.310000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.300000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.220000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.310000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.250000 sec
  file_id | line_id | sample_id | surface_reflectance_band_1 | surface_reflectance_band_3 | surface_reflectance_band_4 |                  point                   
 ---------+---------+-----------+----------------------------+----------------------------+----------------------------+------------------------------------------
-       3 |     507 |       134 |                     0.6258 |                     0.6289 |                     0.6397 | POINT(61.1650238037109 65.9108657836914)
-       3 |     511 |       134 |                     0.6392 |                     0.6499 |                     0.6506 | POINT(61.1566696166992 65.9014511108398)
-       6 |     201 |       316 |                     0.3124 |                     0.3227 |                      0.334 | POINT(61.1615753173828 65.9099349975586)
-       7 |    1475 |         6 |                     0.4956 |                      0.471 |                     0.5396 | POINT(61.165283203125 65.9164581298828)
-       8 |       0 |         6 |                     0.4824 |                     0.4825 |                     0.5299 | POINT(61.1668739318848 65.9062881469727)
-       9 |    1365 |      1117 |                     0.5968 |                     0.6542 |                     0.6148 | POINT(61.1625862121582 65.8967361450195)
+      36 |     507 |       134 |                     0.6258 |                     0.6289 |                     0.6397 | POINT(65.9108657836914 61.1650238037109)
+      36 |     511 |       134 |                     0.6392 |                     0.6499 |                     0.6506 | POINT(65.9014511108398 61.1566696166992)
+      39 |     201 |       316 |                     0.3124 |                     0.3227 |                      0.334 | POINT(65.9099349975586 61.1615753173828)
+      40 |    1475 |         6 |                     0.4956 |                      0.471 |                     0.5396 | POINT(65.9164581298828 61.165283203125)
+      41 |       0 |         6 |                     0.4824 |                     0.4825 |                     0.5299 | POINT(65.9062881469727 61.1668739318848)
+      42 |    1365 |      1117 |                     0.5968 |                     0.6542 |                     0.6148 | POINT(65.8967361450195 61.1625862121582)
 (6 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  col: 5 strtype: footprint type: 2
-DEBUG:  Detected footprint qual {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 121 81 64 ]}) :location 10}
-DEBUG:  Selected path quals: ({RESTRICTINFO :clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 121 81 64 ]}) :location 10} :is_pushed_down true :outerjoin_delayed false :can_join false :pseudoconstant false :clause_relids (b 1) :required_relids (b 1) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b) :orclause <> :norm_selec 0.0000 :outer_selec -1.0000 :mergeopfamilies <> :left_em <> :right_em <> :outer_is_left false :hashjoinoperator 0})
-DEBUG:  Skipping external clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 121 81 64 ]}) :location 10}
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 2 0 7 0 7 7 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  options for att 6: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 1" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 1
-DEBUG:  options for att 8: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 3" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 3
-DEBUG:  options for att 9: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 4" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 4
-DEBUG:  SDS buffers: 5
-DEBUG:  SDS buffers: 5
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.310000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.300000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.220000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.300000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.260000 sec
  file_id | line_id | sample_id | surface_reflectance_band_1 | surface_reflectance_band_3 | surface_reflectance_band_4 |                  point                   
 ---------+---------+-----------+----------------------------+----------------------------+----------------------------+------------------------------------------
-       3 |     483 |       242 |                     0.7343 |                     0.7538 |                      0.757 | POINT(61.1647834777832 69.8935928344727)
-       6 |     155 |       485 |                     0.6283 |                     0.6509 |                     0.6674 | POINT(61.1636276245117 69.8943328857422)
-       7 |    1475 |        61 |                     0.7988 |                     0.8259 |                      0.844 | POINT(61.1643753051758 69.9159774780273)
-       8 |       0 |        61 |                     0.7854 |                     0.8284 |                     0.8371 | POINT(61.1534729003906 69.9067153930664)
-       9 |    1264 |      1213 |                     0.8436 |                     0.9574 |                     0.8701 | POINT(61.1594619750977 69.9091949462891)
+      36 |     483 |       242 |                     0.7343 |                     0.7538 |                      0.757 | POINT(69.8935928344727 61.1647834777832)
+      39 |     155 |       485 |                     0.6283 |                     0.6509 |                     0.6674 | POINT(69.8943328857422 61.1636276245117)
+      40 |    1475 |        61 |                     0.7988 |                     0.8259 |                      0.844 | POINT(69.9159774780273 61.1643753051758)
+      41 |       0 |        61 |                     0.7854 |                     0.8284 |                     0.8371 | POINT(69.9067153930664 61.1534729003906)
+      42 |    1264 |      1213 |                     0.8436 |                     0.9574 |                     0.8701 | POINT(69.9091949462891 61.1594619750977)
 (5 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  col: 6 strtype: time type: 6
-DEBUG:  col: 5 strtype: footprint type: 2
-DEBUG:  processing EquivalenceClass {EQUIVALENCECLASS :ec_opfamilies (o 434) :ec_collation 0 :ec_members ({EQUIVALENCEMEMBER :em_expr {VAR :varno 1 :varattno 6 :vartype 1114 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 6 :location 291} :em_relids (b 1) :em_nullable_relids (b) :em_is_const false :em_is_child false :em_datatype 1114}) :ec_sources <> :ec_derives <> :ec_relids (b 1) :ec_has_const false :ec_has_volatile false :ec_below_outer_join false :ec_broken false :ec_sortref 1}
-DEBUG:  Detected footprint qual {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 57 89 64 ]}) :location 10}
-DEBUG:  Selected path quals: ({RESTRICTINFO :clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 57 89 64 ]}) :location 10} :is_pushed_down true :outerjoin_delayed false :can_join false :pseudoconstant false :clause_relids (b 1) :required_relids (b 1) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b) :orclause <> :norm_selec 0.0000 :outer_selec -1.0000 :mergeopfamilies <> :left_em <> :right_em <> :outer_is_left false :hashjoinoperator 0})
-DEBUG:  Skipping external clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 5 :location 221} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 32 [ -128 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 20 -82 71 -31 122 -108 78 64 -102 -103 -103 -103 -103 57 89 64 ]}) :location 10}
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 2 6 7 0 7 7 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  options for att 6: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 1" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 1
-DEBUG:  options for att 8: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 3" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 3
-DEBUG:  options for att 9: ({DEFELEM :defnamespace <> :defname sds :arg "\1km\ Surface\ Reflectance\ Band\ 4" :defaction 0})
-DEBUG:  creating buffer for sds 1km Surface Reflectance Band 4
-DEBUG:  SDS buffers: 5
-DEBUG:  SDS buffers: 5
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0430.005.2013111065139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.300000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.290000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  File processed in 0.220000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  Opening SDS 1km Surface Reflectance Band 1
-DEBUG:  Opening SDS 1km Surface Reflectance Band 3
-DEBUG:  Opening SDS 1km Surface Reflectance Band 4
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.310000 sec
  file_id | line_id | sample_id | surface_reflectance_band_1 | surface_reflectance_band_3 | surface_reflectance_band_4 |                  point                   
 ---------+---------+-----------+----------------------------+----------------------------+----------------------------+------------------------------------------
-       7 |    1043 |      1181 |                     0.5554 |                     0.6863 |                     0.5862 | POINT(61.1577568054199 100.909942626953)
-       1 |     871 |       493 |                      0.538 |                     0.5312 |                     0.5486 | POINT(61.1612358093262 100.901153564453)
+      40 |    1043 |      1181 |                     0.5554 |                     0.6863 |                     0.5862 | POINT(100.909942626953 61.1577568054199)
+      34 |     871 |       493 |                      0.538 |                     0.5312 |                     0.5486 | POINT(100.901153564453 61.1612358093262)
 (2 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  Detected footprint qual {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 4 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 4 :location 79} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 120 [ -32 1 0 0 0 0 0 4 -103 -103 116 66 -40 -93 116 66 -82 -57 -125 66 11 -41 -125 66 3 0 0 0 1 0 0 0 5 0 0 0 0 0 0 0 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 120 80 64 20 -82 71 -31 122 -108 78 64 123 20 -82 71 -31 122 80 64 51 51 51 51 51 -109 78 64 123 20 -82 71 -31 122 80 64 51 51 51 51 51 -109 78 64 41 92 -113 -62 -11 120 80 64 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 120 80 64 ]}) :location 10}
-DEBUG:  Selected path quals: ({RESTRICTINFO :clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 4 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 4 :location 79} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 120 [ -32 1 0 0 0 0 0 4 -103 -103 116 66 -40 -93 116 66 -82 -57 -125 66 11 -41 -125 66 3 0 0 0 1 0 0 0 5 0 0 0 0 0 0 0 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 120 80 64 20 -82 71 -31 122 -108 78 64 123 20 -82 71 -31 122 80 64 51 51 51 51 51 -109 78 64 123 20 -82 71 -31 122 80 64 51 51 51 51 51 -109 78 64 41 92 -113 -62 -11 120 80 64 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 120 80 64 ]}) :location 10} :is_pushed_down true :outerjoin_delayed false :can_join false :pseudoconstant false :clause_relids (b 1) :required_relids (b 1) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b) :orclause <> :norm_selec 0.0000 :outer_selec -1.0000 :mergeopfamilies <> :left_em <> :right_em <> :outer_is_left false :hashjoinoperator 0})
-DEBUG:  Skipping external clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 4 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 4 :location 79} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 120 [ -32 1 0 0 0 0 0 4 -103 -103 116 66 -40 -93 116 66 -82 -57 -125 66 11 -41 -125 66 3 0 0 0 1 0 0 0 5 0 0 0 0 0 0 0 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 120 80 64 20 -82 71 -31 122 -108 78 64 123 20 -82 71 -31 122 80 64 51 51 51 51 51 -109 78 64 123 20 -82 71 -31 122 80 64 51 51 51 51 51 -109 78 64 41 92 -113 -62 -11 120 80 64 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 120 80 64 ]}) :location 10}
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  SDS buffers: 2
-DEBUG:  SDS buffers: 2
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 0.160000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 0.170000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 0.110000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 0.160000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.140000 sec
  file_id | line_id | sample_id 
 ---------+---------+-----------
-       3 |     508 |       134
-       3 |     511 |       134
-       6 |     202 |       316
+      36 |     508 |       134
+      36 |     511 |       134
+      39 |     202 |       316
 (3 rows)
 
-DEBUG:  col: 1 strtype: file_index type: 3
-DEBUG:  col: 2 strtype: line_index type: 4
-DEBUG:  col: 3 strtype: sample_index type: 5
-DEBUG:  col: 4 strtype: point type: 1
-DEBUG:  Detected footprint qual {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 4 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 4 :location 81} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 120 [ -32 1 0 0 0 0 0 4 -103 -103 116 66 -40 -93 116 66 -82 -57 -123 66 11 -41 -123 66 3 0 0 0 1 0 0 0 5 0 0 0 0 0 0 0 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 -72 80 64 20 -82 71 -31 122 -108 78 64 123 20 -82 71 -31 -70 80 64 51 51 51 51 51 -109 78 64 123 20 -82 71 -31 -70 80 64 51 51 51 51 51 -109 78 64 41 92 -113 -62 -11 -72 80 64 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 -72 80 64 ]}) :location 10}
-DEBUG:  Selected path quals: ({RESTRICTINFO :clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 4 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 4 :location 81} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 120 [ -32 1 0 0 0 0 0 4 -103 -103 116 66 -40 -93 116 66 -82 -57 -123 66 11 -41 -123 66 3 0 0 0 1 0 0 0 5 0 0 0 0 0 0 0 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 -72 80 64 20 -82 71 -31 122 -108 78 64 123 20 -82 71 -31 -70 80 64 51 51 51 51 51 -109 78 64 123 20 -82 71 -31 -70 80 64 51 51 51 51 51 -109 78 64 41 92 -113 -62 -11 -72 80 64 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 -72 80 64 ]}) :location 10} :is_pushed_down true :outerjoin_delayed false :can_join false :pseudoconstant false :clause_relids (b 1) :required_relids (b 1) :outer_relids (b) :nullable_relids (b) :left_relids (b 1) :right_relids (b) :orclause <> :norm_selec 0.0000 :outer_selec -1.0000 :mergeopfamilies <> :left_em <> :right_em <> :outer_is_left false :hashjoinoperator 0})
-DEBUG:  Skipping external clause {OPEXPR :opno 16453 :opfuncid 16452 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 4 :vartype 16392 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 4 :location 81} {CONST :consttype 16392 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 120 [ -32 1 0 0 0 0 0 4 -103 -103 116 66 -40 -93 116 66 -82 -57 -123 66 11 -41 -123 66 3 0 0 0 1 0 0 0 5 0 0 0 0 0 0 0 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 -72 80 64 20 -82 71 -31 122 -108 78 64 123 20 -82 71 -31 -70 80 64 51 51 51 51 51 -109 78 64 123 20 -82 71 -31 -70 80 64 51 51 51 51 51 -109 78 64 41 92 -113 -62 -11 -72 80 64 20 -82 71 -31 122 -108 78 64 41 92 -113 -62 -11 -72 80 64 ]}) :location 10}
-DEBUG:  in hvaultBegin
-DEBUG:  check_column_types: coltypes: (i 3 4 5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
-DEBUG:  creating buffer for sds Latitude
-DEBUG:  creating buffer for sds Longitude
-DEBUG:  SDS buffers: 2
-DEBUG:  SDS buffers: 2
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0610.005.2013111065835.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 0.160000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013026.0635.005.2013027075743.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 0.160000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0536.005.2013028080029.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 0.120000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013027.0540.005.2013028080139.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  File processed in 0.160000 sec
-DEBUG:  loading hdf file /home/kikht/Downloads/hdf/MOD09.A2013110.0745.005.2013111065437.hdf
-DEBUG:  Opening SDS Latitude
-DEBUG:  Opening SDS Longitude
-DEBUG:  No more files
-DEBUG:  No more files
-DEBUG:  End of scan: no more files
-DEBUG:  in hvaultEnd
-DEBUG:  File processed in 0.130000 sec
  file_id | line_id | sample_id 
 ---------+---------+-----------
 (0 rows)
+

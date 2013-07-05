@@ -7,8 +7,8 @@ Overlaps_op(float latmin,
             float lonmax, 
             GBOX const *arg)
 {
-    return !( (latmin > arg->xmax) || (arg->xmin > latmax) ||
-              (lonmin > arg->ymax) || (arg->ymin > lonmax) );
+    return !( (latmin > arg->ymax) || (arg->ymin > latmax) ||
+              (lonmin > arg->xmax) || (arg->xmin > lonmax) );
 }
 
 static inline bool 
@@ -18,8 +18,8 @@ Contains_op(float latmin,
             float lonmax, 
             GBOX const *arg)
 {
-    return !( (latmin > arg->xmin) || (latmax < arg->xmax) ||
-              (lonmin > arg->ymin) || (lonmax < arg->ymax) );
+    return !( (latmin > arg->ymin) || (latmax < arg->ymax) ||
+              (lonmin > arg->xmin) || (lonmax < arg->xmax) );
 }
 
 static inline bool 
@@ -29,8 +29,8 @@ Within_op(float latmin,
           float lonmax, 
           GBOX const *arg)
 {
-    return !( (arg->xmin > latmin) || (arg->xmax < latmax) ||
-              (arg->ymin > lonmin) || (arg->ymax < lonmax) );
+    return !( (arg->ymin > latmin) || (arg->ymax < latmax) ||
+              (arg->xmin > lonmin) || (arg->xmax < lonmax) );
 }
 
 static inline bool 
@@ -40,8 +40,8 @@ Same_op(float latmin,
           float lonmax, 
           GBOX const *arg)
 {
-    return !( (latmin != arg->xmin) || (latmax != arg->xmax) ||
-              (lonmin != arg->ymin) || (lonmax != arg->ymax) );
+    return !( (latmin != arg->ymin) || (latmax != arg->ymax) ||
+              (lonmin != arg->xmin) || (lonmax != arg->xmax) );
 }
 
 static inline bool 
@@ -55,7 +55,7 @@ Overleft_op(float latmin,
     (void)(lonmin);
     (void)(lonmax);
 
-    return latmax <= arg->xmax;
+    return latmax <= arg->ymax;
 }
 
 static inline bool 
@@ -69,7 +69,7 @@ Left_op(float latmin,
     (void)(lonmin);
     (void)(lonmax);
 
-    return latmax < arg->xmin;
+    return latmax < arg->ymin;
 }
 
 static inline bool 
@@ -83,7 +83,7 @@ Right_op(float latmin,
     (void)(lonmin);
     (void)(lonmax);
 
-    return latmin > arg->xmax;
+    return latmin > arg->ymax;
 }
 
 static inline bool 
@@ -97,7 +97,7 @@ Overright_op(float latmin,
     (void)(lonmin);
     (void)(lonmax);
 
-    return latmin >= arg->xmin;
+    return latmin >= arg->ymin;
 }
 
 static inline bool 
@@ -111,7 +111,7 @@ Overbelow_op(float latmin,
     (void)(latmax);
     (void)(lonmin);
 
-    return lonmax <= arg->ymax;
+    return lonmax <= arg->xmax;
 }
 
 static inline bool 
@@ -125,7 +125,7 @@ Below_op(float latmin,
     (void)(latmax);
     (void)(lonmin);
 
-    return lonmax < arg->ymin;
+    return lonmax < arg->xmin;
 }
 
 static inline bool 
@@ -139,7 +139,7 @@ Above_op(float latmin,
     (void)(latmax);
     (void)(lonmax);
 
-    return lonmin > arg->ymax;
+    return lonmin > arg->xmax;
 }
 
 static inline bool 
@@ -153,7 +153,7 @@ Overabove_op(float latmin,
     (void)(latmax);
     (void)(lonmax);
 
-    return lonmin >= arg->ymin;
+    return lonmin >= arg->xmin;
 }
 
 static inline bool 
@@ -167,7 +167,7 @@ CommLeft_op(float latmin,
     (void)(lonmin);
     (void)(lonmax);
 
-    return latmax >= arg->xmax;
+    return latmax >= arg->ymax;
 }
 
 static inline bool 
@@ -181,7 +181,7 @@ CommRight_op(float latmin,
     (void)(lonmin);
     (void)(lonmax);
 
-    return latmin <= arg->xmin;
+    return latmin <= arg->ymin;
 }
 
 static inline bool 
@@ -195,7 +195,7 @@ CommBelow_op(float latmin,
     (void)(latmax);
     (void)(lonmin);
 
-    return lonmax >= arg->ymax;
+    return lonmax >= arg->xmax;
 }
 
 static inline bool 
@@ -209,7 +209,7 @@ CommAbove_op(float latmin,
     (void)(latmax);
     (void)(lonmax);
 
-    return lonmin <= arg->ymin;
+    return lonmin <= arg->xmin;
 }
 
 typedef bool (*geom_predicate_op)(float latmin,
