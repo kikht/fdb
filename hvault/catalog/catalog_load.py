@@ -53,7 +53,8 @@ def mod02_filter(plist, re, prefix, time):
         temp_list.sort(reverse = True)
     return prefix + temp_list[0] if len(temp_list) > 0 else None    
 
-
+prod_names=['mod03', 'mod021km', 'mod02hkm', 'mod02qkm', 'mod04', 'mod05', \
+		    'mod07', 'mod09', 'mod10', 'mod14', 'mod35', 'modhkmds', 'mod1kmds']
 # TODO: insert connection parameters here
 table_name = "catalog"
 connection = psycopg2.connect();
@@ -63,7 +64,7 @@ query = "create table " + table_name + \
            starttime timestamp not null, \
            stoptime  timestamp not null, \
            footprint geometry  not null, " + \
-        " text, ".join(prod_re.keys()) + " text );"
+        " text, ".join(prod_names) + " text );"
 cursor.execute(query)
 query = "create index on " + table_name + " using gist( footprint )";
 cursor.execute(query);
@@ -87,17 +88,16 @@ prod_re["modhkmds"] = re.compile("^M[OY]DHKMDS.*hdf$")
 prod_re["mod1kmds"] = re.compile("^M[OY]D1KMDS.*hdf$")
 
 
-query = "prepare catinsert( timestamp, timestamp, geometry, \
-         text, text, text, text" + \
-        ", text" * len(prod_re) + \
+query = "prepare catinsert( timestamp, timestamp, geometry" + \
+        ", text" * len(prod_names) + \
         ") as insert into " + table_name + \
         " (starttime, stoptime, footprint, mod03, mod021km, mod02hkm, mod02qkm, " + \
         ", ".join(prod_re.keys()) + ") values (" + \
-        ", ".join([ "${0}".format(i) for i in range(1, len(prod_re) + 8) ]) + ");"
+        ", ".join([ "${0}".format(i) for i in range(1, len(prod_names) + 4) ]) + ");"
 print query
 cursor.execute(query)
 
-query = "execute catinsert(" + ", ".join(["%s"] * (len(prod_re) + 7)) + ");"
+query = "execute catinsert(" + ", ".join(["%s"] * (len(prod_names) + 3)) + ");"
 for path in glob.iglob("/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????"):
     dirList = os.listdir(path)
 
@@ -140,15 +140,15 @@ prod_re["mod021km"] = re.compile("^M[OY]D021KM.*hdf$")
 prod_re["mod02hkm"] = re.compile("^M[OY]D02HKM.*hdf$")
 prod_re["mod02qkm"] = re.compile("^M[OY]D02QKM.*hdf$")
 
-query = "prepare catinsert( timestamp, timestamp, geometry" + \
+query = "prepare catinsert2( timestamp, timestamp, geometry" + \
         ", text" * len(prod_re) + \
         ") as insert into " + table_name + \
         " (starttime, stoptime, footprint, " + \
         ", ".join(prod_re.keys()) + ") values (" + \
-        ", ".join([ "${0}".format(i) for i in range(1, len(prod_re) + 4) ]) + ");"
+        ", ".join([ "${0}".format(i) for i in range(1, len(prod_names) + 4) ]) + ");"
 cursor.execute(query)
 
-query = "execute catinsert(" + ", ".join(["%s"] * (len(prod_re) + 3)) + ");"
+query = "execute catinsert2(" + ", ".join(["%s"] * (len(prod_names) + 3)) + ");"
 for path in glob.iglob("/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????/????"):
     dirList = os.listdir(path)
 
