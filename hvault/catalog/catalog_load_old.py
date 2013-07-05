@@ -8,10 +8,21 @@ from osgeo import gdal
 
 def proc_metadata(mod03):
     gd = gdal.Open(mod03)
-    starttime = gd.GetMetadataItem("RANGEBEGINNINGDATE") + " " + \
-                gd.GetMetadataItem("RANGEBEGINNINGTIME")
-    stoptime  = gd.GetMetadataItem("RANGEENDINGDATE") + " " + \
-                gd.GetMetadataItem("RANGEENDINGTIME")
+    if not gd:
+        return (None, None, None)
+	
+    startdate = gd.GetMetadataItem("RANGEBEGINNINGDATE")
+    if not startdate:
+        return (None, None, None)
+    starttime = gd.GetMetadataItem("RANGEBEGINNINGTIME")
+    if not starttime:
+        return (None, None, None)
+    stopdate  = gd.GetMetadataItem("RANGEENDINGDATE")
+    if not stopdate:
+        return (None, None, None)
+    stoptime  = gd.GetMetadataItem("RANGEENDINGTIME")
+    if not stoptime:
+        return (None, None, None)
 
     coord = dict()
     coord["north"] = gd.GetMetadataItem("NORTHBOUNDINGCOORDINATE")
@@ -20,7 +31,7 @@ def proc_metadata(mod03):
     coord["west"] = gd.GetMetadataItem("WESTBOUNDINGCOORDINATE")
     fp = "POLYGON(( {north} {west}, {north} {east}, {south} {east}, \
                     {south} {west}, {north} {west} ))".format(**coord)
-    return (starttime, stoptime, fp)
+    return (startdate + " " + starttime, stopdate + " " + stoptime, fp)
 
 def list_filter(plist, re, prefix):
     temp_list = filter(re.match, plist)
@@ -58,7 +69,7 @@ prod_re["modhkmds"] = re.compile("^M[OY]DHKMDS.*hdf$")
 prod_re["mod1kmds"] = re.compile("^M[OY]D1KMDS.*hdf$")
 
 # TODO: insert connection parameters here
-connection = psycopg2.connect();
+connection = psycopg2.connect(user='hvault', port=5433, password='hvault_secret');
 cursor = connection.cursor()
 query = "prepare catinsert( timestamp, timestamp, geometry, \
          text, text, text, text" + \
@@ -79,6 +90,9 @@ for path in glob.iglob("/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????"):
             continue
         time = mod03.group(1)
         (starttime, stoptime, fp) = proc_metadata(path + "/" + mod03.group(0))
+        if not starttime or not stoptime or not fp:
+            print "Metadata problem!: ", path, time
+            continue
         prod_list = list()
         prod_list.append(starttime)
         prod_list.append(stoptime)
