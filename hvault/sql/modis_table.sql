@@ -91,13 +91,13 @@ CREATE FOREIGN TABLE modis1km (
     EV_Emissive_Band_35_UncertIndex      int2    OPTIONS (cat_name 'mod021km', dataset 'EV_1KM_Emissive_Uncert_Indexes', prefix '14'),
     EV_Emissive_Band_36_UncertIndex      int2    OPTIONS (cat_name 'mod021km', dataset 'EV_1KM_Emissive_Uncert_Indexes', prefix '15'),
 
-    EV_Reflective_Band_1                 int2    OPTIONS (cat_name 'mod021km', dataset 'EV_250_Aggr1km_RefSB_Samples_Used', prefix '0'),
-    EV_Reflective_Band_2                 int2    OPTIONS (cat_name 'mod021km', dataset 'EV_250_Aggr1km_RefSB_Samples_Used', prefix '1'),
-    EV_Reflective_Band_3                 int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '0'),
-    EV_Reflective_Band_4                 int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '1'),
-    EV_Reflective_Band_5                 int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '2'),
-    EV_Reflective_Band_6                 int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '3'),
-    EV_Reflective_Band_7                 int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '4'),
+    EV_Reflective_Band_1_Samples_Used    int2    OPTIONS (cat_name 'mod021km', dataset 'EV_250_Aggr1km_RefSB_Samples_Used', prefix '0'),
+    EV_Reflective_Band_2_Samples_Used    int2    OPTIONS (cat_name 'mod021km', dataset 'EV_250_Aggr1km_RefSB_Samples_Used', prefix '1'),
+    EV_Reflective_Band_3_Samples_Used    int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '0'),
+    EV_Reflective_Band_4_Samples_Used    int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '1'),
+    EV_Reflective_Band_5_Samples_Used    int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '2'),
+    EV_Reflective_Band_6_Samples_Used    int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '3'),
+    EV_Reflective_Band_7_Samples_Used    int2    OPTIONS (cat_name 'mod021km', dataset 'EV_500_Aggr1km_RefSB_Samples_Used', prefix '4'),
 
 -- MOD03 layers
     Height                            int2    OPTIONS (cat_name 'mod03', dataset 'Height'),
@@ -170,7 +170,7 @@ CREATE FOREIGN TABLE modis1km (
 -- MOD05 layers
     Water_Vapor_Near_Infrared                     float8  OPTIONS (cat_name 'mod05', dataset 'Water_Vapor_Near_Infrared'),
     Water_Vapor_Correction_Factors                int2    OPTIONS (cat_name 'mod05', dataset 'Water_Vapor_Correction_Factors'),
-    MOD05_Quality_Assurance_Near_Infrared         bit(8)  OPTIONS (cat_name 'mod05', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Near_Infrared'),
+    MOD05_Quality_Assurance_Near_Infrared         bit(8)  OPTIONS (cat_name 'mod05', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Near_Infrared')
 
     -- Water_Vapor_Infrared                          float8  OPTIONS (cat_name 'mod05', factor '5', dataset 'Water_Vapor_Infrared'),
     -- MOD05_Quality_Assurance_Infrared              bit(40) OPTIONS (cat_name 'mod05', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared'),
