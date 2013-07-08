@@ -545,6 +545,8 @@ fillPixelColumns (ExecState *state)
     if (state->col_indices[HvaultColumnFootprint] >= 0)
     {
         GSERIALIZED *ret;
+        /* This is quite dirty code that uses internal representation of LWPOLY.
+           However it is a very hot place here */
         double *data = (double *) state->poly->rings[0]->serialized_pointlist;
         switch (state->geotype)
         {
@@ -585,13 +587,25 @@ fillPixelColumns (ExecState *state)
             default:
                 elog(ERROR, "Geolocation type is not supported");
         }
-        /* This is quite dirty code that uses internal representation of LWPOLY.
-           However it is a very hot place here */
-        lwgeom_calculate_gbox((LWGEOM *) state->poly, state->poly->bbox);
-        ret = gserialized_from_lwgeom((LWGEOM *) state->poly, true, NULL);
-        state->nulls[state->col_indices[HvaultColumnFootprint]] = false;
-        state->values[state->col_indices[HvaultColumnFootprint]] = 
-            PointerGetDatum(ret);   
+        if (data[0] > 360.0 || data[0] < -180.0 ||
+            data[2] > 360.0 || data[2] < -180.0 ||
+            data[4] > 360.0 || data[4] < -180.0 ||
+            data[6] > 360.0 || data[6] < -180.0 ||
+            data[1] > 90.0  || data[1] < -90.0  ||
+            data[3] > 90.0  || data[3] < -90.0  ||
+            data[5] > 90.0  || data[5] < -90.0  ||
+            data[7] > 90.0  || data[7] < -90.0  )
+        {
+            state->nulls[state->col_indices[HvaultColumnFootprint]] = true;
+        }
+        else
+        {
+            lwgeom_calculate_gbox((LWGEOM *) state->poly, state->poly->bbox);
+            ret = gserialized_from_lwgeom((LWGEOM *) state->poly, true, NULL);
+            state->nulls[state->col_indices[HvaultColumnFootprint]] = false;
+            state->values[state->col_indices[HvaultColumnFootprint]] = 
+                PointerGetDatum(ret);   
+        }
     }
 
     if (state->col_indices[HvaultColumnPoint] >= 0)
@@ -602,10 +616,18 @@ fillPixelColumns (ExecState *state)
         double *data = (double *) state->point->point->serialized_pointlist;
         data[0] = state->chunk.point_lon[cur_idx];
         data[1] = state->chunk.point_lat[cur_idx];
-        ret = gserialized_from_lwgeom((LWGEOM *) state->point, true, NULL);
-        state->nulls[state->col_indices[HvaultColumnPoint]] = false;
-        state->values[state->col_indices[HvaultColumnPoint]] = 
-            PointerGetDatum(ret);
+        if (data[0] > 360.0 || data[0] < -180.0 ||
+            data[1] > 90.0  || data[1] < -90.0)
+        {
+            state->nulls[state->col_indices[HvaultColumnPoint]] = true;
+        }
+        else
+        {
+            ret = gserialized_from_lwgeom((LWGEOM *) state->point, true, NULL);
+            state->nulls[state->col_indices[HvaultColumnPoint]] = false;
+            state->values[state->col_indices[HvaultColumnPoint]] = 
+                PointerGetDatum(ret);
+        }
     }
 
     foreach(l, state->chunk.layers)
