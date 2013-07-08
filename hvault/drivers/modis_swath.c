@@ -646,8 +646,9 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
             continue;
         }
 
-        /* Get scale, offset & fill */
-        if (layer->layer.src_type != HvaultBitmap)
+        /* Get fill value */
+        if (layer->layer.src_type != HvaultBitmap && 
+            layer->layer.src_type != HvaultPrefixBitmap)
         {
             if (layer->layer.fill_val == NULL)
                 layer->layer.fill_val = palloc(layer->layer.item_size);
@@ -657,10 +658,24 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
                 layer->layer.fill_val = NULL;
             }
         }
+
+        /* Get range, scale and offset */
         if (layer->coltypid == FLOAT8OID)
         {
             if (SDgetcal(layer->sds_id, &layer->layer.scale, &cal_err, 
-                         &layer->layer.offset, &offset_err, &sdtype) != SUCCEED)
+                         &layer->layer.offset, &offset_err, &sdtype) == SUCCEED)
+            {
+                if (layer->layer.range == NULL)
+                    layer->layer.range = palloc(layer->layer.item_size * 2);
+                if (SDgetrange(layer->sds_id, layer->layer.range, 
+                        ((char*) layer->layer.range) + layer->layer.item_size) 
+                    != SUCCEED)
+                {
+                    pfree(layer->layer.range);
+                    layer->layer.range = NULL;
+                }
+            }
+            else
             {
                 layer->layer.scale = 1.;
                 layer->layer.offset = 0;

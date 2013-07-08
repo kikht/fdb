@@ -408,120 +408,93 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
         state->nulls[layer->colnum] = true;
         return;
     }
-    state->nulls[layer->colnum] = false;
 
-    if (layer->scale == 0) 
-    {
-        void *src = layer->data;
-        Datum dst;
+#define typedFill(type, datumConverter) \
+{ \
+    type val = (((type *) layer->data)[idx]); \
+    state->nulls[layer->colnum] = false; \
+    if (layer->scale == 0) \
+    { \
+        state->values[layer->colnum] = datumConverter(val); \
+    } \
+    else \
+    { \
+        double * const static_dst = layer->temp; \
+        double dst = val; \
+        if (layer->range != NULL) \
+        { \
+            type lower = (((type *) layer->range)[0]); \
+            type upper = (((type *) layer->range)[1]); \
+            if (val < lower || val > upper) \
+            { \
+                state->nulls[layer->colnum] = true; \
+                return; \
+            } \
+        } \
+        *static_dst = dst / layer->scale - layer->offset; \
+        state->values[layer->colnum] = Float8GetDatumFast(*static_dst); \
+    } \
+} while(0)
 
-        switch (layer->src_type)
-        {
-            case HvaultInt8:
-                dst = Int8GetDatum      (((int8_t *)   src)[idx]);
-                break;
-            case HvaultInt16:
-                dst = Int16GetDatum     (((int16_t *)  src)[idx]);
-                break;
-            case HvaultInt32:
-                dst = Int32GetDatum     (((int32_t *)  src)[idx]);
-                break;
-            case HvaultInt64:
-                dst = Int64GetDatumFast (((int64_t *)  src)[idx]);
-                break;
-            case HvaultFloat32:
-                dst = Float4GetDatum    (((float *)    src)[idx]);
-                break;
-            case HvaultFloat64:
-                dst = Float8GetDatumFast(((double *)   src)[idx]);
-                break;
-            case HvaultBitmap:
-                {
-                    memcpy(VARBITS(layer->temp), 
-                           ((char *) src) + layer->item_size * idx, 
-                           layer->item_size);
-                    dst = VarBitPGetDatum(layer->temp);
-                }
-                break;
-            case HvaultPrefixBitmap:
-                {
-                    size_t i;
-                    const size_t bitmap_stride = state->chunk.size 
-                        / layer->hfactor / layer->vfactor;
-                    for (i = 0; i < layer->item_size; i++)
-                    {
-                        VARBITS(layer->temp)[i] = 
-                            ((char *) src)[idx + i * bitmap_stride];
-                    }
-                    dst = VarBitPGetDatum(layer->temp);
-                }
-                break;
-            case HvaultUInt8:
-                dst = UInt8GetDatum     (((uint8_t *)  src)[idx]);
-                break;
-            case HvaultUInt16:
-                dst = UInt16GetDatum    (((uint16_t *) src)[idx]);
-                break;
-            case HvaultUInt32:
-                dst = UInt32GetDatum    (((uint32_t *) src)[idx]);
-                break;
-            case HvaultUInt64:
-                dst = Int64GetDatumFast (((uint64_t *) src)[idx]);
-                break;
-            default:
-                elog(ERROR, "Datatype is not supported");
-                return; /* Will never reach this */
-        }
-        state->values[layer->colnum] = dst;
-    }
-    else 
+    switch (layer->src_type)
     {
-        void const * const src = layer->data;
-        double dst;
-        double * const static_dst = layer->temp;
-        switch (layer->src_type)
-        {
-            case HvaultInt8:
-                dst = ((int8_t *)   src)[idx];
-                break;
-            case HvaultInt16:
-                dst = ((int16_t *)  src)[idx];
-                break;
-            case HvaultInt32:
-                dst = ((int32_t *)  src)[idx];
-                break;
-            case HvaultInt64:
-                dst = ((int64_t *)  src)[idx];
-                break;
-            case HvaultFloat32:
-                dst = ((float *)    src)[idx];
-                break;
-            case HvaultFloat64:
-                dst = ((double *)   src)[idx];
-                break;
-            case HvaultBitmap:
-            case HvaultPrefixBitmap:
-                elog(ERROR, "Scaled bitmaps are not supported");
-                return; /* Will never reach this */
-            case HvaultUInt8:
-                dst = ((uint8_t *)  src)[idx];
-                break;
-            case HvaultUInt16:
-                dst = ((uint16_t *) src)[idx];
-                break;
-            case HvaultUInt32:
-                dst = ((uint32_t *) src)[idx];
-                break;
-            case HvaultUInt64:
-                dst = ((uint64_t *) src)[idx];
-                break;    
-            default:
-                elog(ERROR, "Datatype is not supported");
-                return; /* Will never reach this */
-        }
-        *static_dst = dst / layer->scale - layer->offset;
-        state->values[layer->colnum] = Float8GetDatumFast(*static_dst);
+        case HvaultInt8:
+            typedFill(int8_t, Int8GetDatum);
+            break;
+        case HvaultUInt8:
+            typedFill(uint8_t, UInt8GetDatum);
+            break;
+        case HvaultInt16:
+            typedFill(int16_t, Int16GetDatum);
+            break;
+        case HvaultUInt16:
+            typedFill(uint16_t, UInt16GetDatum);
+            break;
+        case HvaultInt32:
+            typedFill(int32_t, Int32GetDatum);
+            break;
+        case HvaultUInt32:
+            typedFill(int32_t, UInt32GetDatum);
+            break;
+        case HvaultInt64:
+            typedFill(int64_t, Int64GetDatumFast);
+            break;
+        case HvaultUInt64:
+            typedFill(uint64_t, Int64GetDatumFast);
+            break;
+        case HvaultFloat32:
+            typedFill(float, Float4GetDatum);
+            break;
+        case HvaultFloat64:
+            typedFill(double, Float8GetDatumFast);
+            break;
+        case HvaultBitmap:
+            {
+                memcpy(VARBITS(layer->temp), 
+                       ((char *) layer->data) + layer->item_size * idx, 
+                       layer->item_size);
+                state->values[layer->colnum] = VarBitPGetDatum(layer->temp);
+            }
+            break;
+        case HvaultPrefixBitmap:
+            {
+                size_t i;
+                const size_t bitmap_stride = state->chunk.size 
+                    / layer->hfactor / layer->vfactor;
+                for (i = 0; i < layer->item_size; i++)
+                {
+                    VARBITS(layer->temp)[i] = 
+                        ((char *) layer->data)[idx + i * bitmap_stride];
+                }
+                state->values[layer->colnum] = VarBitPGetDatum(layer->temp);
+            }
+            break;
+        default:
+            elog(ERROR, "Datatype is not supported");
+            return; /* Will never reach this */
     }
+
+#undef typedFill
 }
 
 static void

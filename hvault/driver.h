@@ -43,6 +43,7 @@ typedef struct HvaultFileLayer
 {
     void * data;
     void * fill_val;
+    void * range;
     void * temp;
     double scale, offset;
 
