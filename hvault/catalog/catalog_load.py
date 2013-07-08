@@ -105,7 +105,8 @@ for path in glob.iglob("/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????"):
         if not mod03:
             continue
         time = mod03.group(1)
-        (starttime, stoptime, fp) = proc_metadata(path + "/" + mod03.group(0))
+        mod03_filename = path + "/" + mod03.group(0)
+        (starttime, stoptime, fp) = proc_metadata(mod03_filename)
         if not starttime or not stoptime or not fp:
             print "Metadata problem!: ", path, time
             continue
@@ -114,7 +115,7 @@ for path in glob.iglob("/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????"):
         prod_list.append(stoptime)
         prod_list.append(fp)
         
-        prod_list.append(mod03.group(0))
+        prod_list.append(mod03_filename)
         
         prod_list.append(mod02_filter(dirList, mod021km_re, path + "/", time))        
         prod_list.append(mod02_filter(dirList, mod02hkm_re, path + "/", time))        
