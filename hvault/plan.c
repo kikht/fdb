@@ -61,14 +61,10 @@ getSortPathKeys (HvaultPlannerContext * ctx)
 {
     ListCell *l, *m, *k;
     PathKey *line_pk = NULL, *sample_pk = NULL, *index_pk = NULL;
-    Oid intopfamily;
     List *tails = NIL;
     List *catalog_pk = NIL;
     List *catalog_attnum = NIL;
 
-    intopfamily  = get_opfamily_oid(BTREE_AM_OID, 
-                                    list_make1(makeString("integer_ops")), 
-                                    false);
     foreach(l, ctx->root->canon_pathkeys)
     {
         PathKey * pk = lfirst(l);
