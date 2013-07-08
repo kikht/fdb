@@ -14,6 +14,8 @@
 #define HVAULT_COLUMN_OPTION_BITMAPDIMS "bitmap_dims"
 #define HVAULT_COLUMN_OPTION_BITMAPTYPE "bitmap_type"
 #define HVAULT_COLUMN_OPTION_PREFIX "prefix"
+#define HVAULT_COLUMN_OPTION_SCALE "scale"
+#define HVAULT_COLUMN_OPTION_OFFSET "offset"
 
 HvaultColumnType hvaultGetColumnType (DefElem * def);
 

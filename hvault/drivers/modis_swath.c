@@ -33,6 +33,8 @@ typedef struct
     int bitmap_dims, prefix_dims;
     int32_t prefix[H4_MAX_VAR_DIMS];
     int32_t dims[H4_MAX_VAR_DIMS];
+    char const * scale_att;
+    char const * offset_att;
 } HvaultModisSwathLayer;
 
 typedef struct 
@@ -312,6 +314,15 @@ addRegularColumn (HvaultModisSwathDriver * driver,
         } while (*end != '\0');
     }
 
+    layer->scale_att = defFindStringByName(options, HVAULT_COLUMN_OPTION_SCALE);
+    layer->offset_att = defFindStringByName(options, 
+                                            HVAULT_COLUMN_OPTION_OFFSET);
+    if (layer->scale_att == NULL || layer->offset_att == NULL)
+    {
+        layer->scale_att = NULL;
+        layer->offset_att = NULL;   
+    }
+
     driver->layers = lappend(driver->layers, layer);
 }
 
@@ -403,6 +414,103 @@ hvaultModisSwathClose (HvaultFileDriver * drv)
     driver->num_samples = 0;
 }
 
+static int32_t 
+readPrefixedAttr (HvaultModisSwathLayer const * layer, 
+                  char const * attname, 
+                  double * val)
+{
+    int i, index;   
+    int32_t att_id, att_type, count;
+    char name[H4_MAX_NC_NAME];
+    void * buf;
+
+    att_id = SDfindattr(layer->sds_id, attname);
+    if (att_id == FAIL)
+    {
+        elog(WARNING, "Can't find %s attribute, will use no scaling. %s %s",
+             attname, layer->sds_name, layer->file->filename);
+        return FAIL;
+    }
+    if (SDattrinfo(layer->sds_id, att_id, name, &att_type, &count) != SUCCEED)
+    {
+        elog(WARNING, "Can't read %s attribute info: %s %s",
+             attname, layer->sds_name, layer->file->filename);
+        return FAIL;
+    }
+    if (att_type == DFNT_FLOAT32)
+    {
+        buf = palloc(count * sizeof(float));
+    }
+    else if (att_type == DFNT_FLOAT64)
+    {
+        buf = palloc(count * sizeof(double));
+    }
+    else
+    {
+        elog(WARNING, "%s attribute must be float: %s %s",
+             attname, layer->sds_name, layer->file->filename);
+        return FAIL;
+    }
+    if (SDreadattr(layer->sds_id, att_id, buf) != SUCCEED)
+    {
+        elog(WARNING, "Can't read %s attribute: %s %s",
+             attname, layer->sds_name, layer->file->filename);
+        return FAIL;
+    }
+    index = 0;
+    if (layer->prefix_dims > 0)
+    {
+        index = layer->prefix[0];
+        for (i = 0; i < layer->prefix_dims-1; i++)
+        {
+            index *= layer->dims[i];
+            index += layer->prefix[i+1];
+        }
+    }
+    if (index >= count)
+    {
+        elog(WARNING, "Index for %s is out of range: %s %s",
+             attname, layer->sds_name, layer->file->filename);
+        return FAIL;
+    }
+    if (att_type == DFNT_FLOAT32)
+    {
+        *val = ((float*) buf)[index];
+    }
+    else
+    {
+        *val = ((double*) buf)[index];   
+    }
+    pfree(buf);
+    return SUCCEED;
+}
+
+static int32_t
+fillScale (HvaultModisSwathLayer * layer)
+{
+    if (layer->scale_att != NULL && layer->offset_att != NULL)
+    {
+        if (readPrefixedAttr(layer, layer->scale_att, &layer->layer.scale) 
+            != SUCCEED)
+        {
+            return FAIL;
+        }
+        if (readPrefixedAttr(layer, layer->offset_att, &layer->layer.offset) 
+            != SUCCEED)
+        {
+            return FAIL;
+        }
+        return SUCCEED;
+    } 
+    else 
+    {
+        double cal_err, offset_err;
+        int32_t sdtype;
+        return SDgetcal(layer->sds_id, &layer->layer.scale, &cal_err, 
+                        &layer->layer.offset, &offset_err, &sdtype);
+    }
+}
+
 static void 
 hvaultModisSwathOpen (HvaultFileDriver        * drv,
                       HvaultCatalogItem const * products)
@@ -457,10 +565,9 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
     foreach(l, driver->layers)
     {
         HvaultModisSwathLayer *layer = lfirst(l);
-        int32_t sds_idx, rank, sdnattrs, sdtype;
+        int32_t sds_idx, rank, sdnattrs;
         size_t norm_lines, norm_samples, layer_lines, layer_samples;
         HvaultDataType cur_dataype;
-        double cal_err, offset_err;
         int i;
 
         elog(DEBUG2, "Opening SDS %s", layer->sds_name);
@@ -662,8 +769,7 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
         /* Get range, scale and offset */
         if (layer->coltypid == FLOAT8OID)
         {
-            if (SDgetcal(layer->sds_id, &layer->layer.scale, &cal_err, 
-                         &layer->layer.offset, &offset_err, &sdtype) != SUCCEED)
+            if (fillScale(layer) != SUCCEED)
             {
                 layer->layer.scale = 1.;
                 layer->layer.offset = 0;
