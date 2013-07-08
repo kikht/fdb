@@ -777,9 +777,9 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
 
             if (layer->layer.range == NULL)
                 layer->layer.range = palloc(layer->layer.item_size * 2);
-            if (SDgetrange(layer->sds_id, layer->layer.range, 
-                    ((char*) layer->layer.range) + layer->layer.item_size) 
-                != SUCCEED)
+            if (SDgetrange(layer->sds_id, 
+                    ((char*) layer->layer.range) + layer->layer.item_size,
+                    layer->layer.range) != SUCCEED)
             {
                 pfree(layer->layer.range);
                 layer->layer.range = NULL;
