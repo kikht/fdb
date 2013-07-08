@@ -663,22 +663,20 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
         if (layer->coltypid == FLOAT8OID)
         {
             if (SDgetcal(layer->sds_id, &layer->layer.scale, &cal_err, 
-                         &layer->layer.offset, &offset_err, &sdtype) == SUCCEED)
-            {
-                if (layer->layer.range == NULL)
-                    layer->layer.range = palloc(layer->layer.item_size * 2);
-                if (SDgetrange(layer->sds_id, layer->layer.range, 
-                        ((char*) layer->layer.range) + layer->layer.item_size) 
-                    != SUCCEED)
-                {
-                    pfree(layer->layer.range);
-                    layer->layer.range = NULL;
-                }
-            }
-            else
+                         &layer->layer.offset, &offset_err, &sdtype) != SUCCEED)
             {
                 layer->layer.scale = 1.;
                 layer->layer.offset = 0;
+            }
+
+            if (layer->layer.range == NULL)
+                layer->layer.range = palloc(layer->layer.item_size * 2);
+            if (SDgetrange(layer->sds_id, layer->layer.range, 
+                    ((char*) layer->layer.range) + layer->layer.item_size) 
+                != SUCCEED)
+            {
+                pfree(layer->layer.range);
+                layer->layer.range = NULL;
             }
         } 
         /* Allocate data buffer */
