@@ -25,13 +25,15 @@ def proc_metadata(mod03):
         return (None, None, None)
 
     coord = dict()
-    coord["north"] = gd.GetMetadataItem("NORTHBOUNDINGCOORDINATE")
-    coord["south"] = gd.GetMetadataItem("SOUTHBOUNDINGCOORDINATE")
-    coord["east"] = gd.GetMetadataItem("EASTBOUNDINGCOORDINATE")
-    coord["west"] = gd.GetMetadataItem("WESTBOUNDINGCOORDINATE")
+    coord["north"] = float(gd.GetMetadataItem("NORTHBOUNDINGCOORDINATE"))
+    coord["south"] = float(gd.GetMetadataItem("SOUTHBOUNDINGCOORDINATE"))
+    coord["east"] = float(gd.GetMetadataItem("EASTBOUNDINGCOORDINATE"))
+    coord["west"] = float(gd.GetMetadataItem("WESTBOUNDINGCOORDINATE"))
     if coord["east"] < 0:
+        print "correction"
         coord["east"] += 360.0
     if coord["west"] < 0:
+        print "correction"
         coord["east"] += 360.0
 
     fp = "POLYGON(( {west} {north}, {east} {north}, {east} {south}, \
@@ -57,7 +59,8 @@ prod_names=['mod03', 'mod021km', 'mod02hkm', 'mod02qkm', 'mod04', 'mod05', \
 		    'mod07', 'mod09', 'mod10', 'mod14', 'mod35', 'modhkmds', 'mod1kmds']
 # TODO: insert connection parameters here
 table_name = "catalog"
-connection = psycopg2.connect();
+base_path = "/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????"
+connection = psycopg2.connect(database='hvault');
 cursor = connection.cursor()
 query = "create table " + table_name + \
         "( id        serial    primary key, \
@@ -65,8 +68,10 @@ query = "create table " + table_name + \
            stoptime  timestamp not null, \
            footprint geometry  not null, " + \
         " text, ".join(prod_names) + " text );"
+print query;
 cursor.execute(query)
 query = "create index on " + table_name + " using gist( footprint )";
+print query;
 cursor.execute(query);
 
 #### Old file layout #####
@@ -98,7 +103,7 @@ print query
 cursor.execute(query)
 
 query = "execute catinsert(" + ", ".join(["%s"] * (len(prod_names) + 3)) + ");"
-for path in glob.iglob("/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????"):
+for path in glob.iglob(base_path):
     dirList = os.listdir(path)
 
     for mod03 in map(mod03_re.match, dirList):
@@ -147,10 +152,11 @@ query = "prepare catinsert2( timestamp, timestamp, geometry" + \
         " (starttime, stoptime, footprint, " + \
         ", ".join(prod_re.keys()) + ") values (" + \
         ", ".join([ "${0}".format(i) for i in range(1, len(prod_names) + 4) ]) + ");"
+print query
 cursor.execute(query)
 
 query = "execute catinsert2(" + ", ".join(["%s"] * (len(prod_names) + 3)) + ");"
-for path in glob.iglob("/mnt/ifs-gis/ftp/*/modis/archive/*/*/?????/????"):
+for path in glob.iglob(base_path + "/????"):
     dirList = os.listdir(path)
 
     mod03 = filter(prod_re['mod03'].match, dirList)
