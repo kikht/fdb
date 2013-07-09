@@ -719,6 +719,7 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
     int i;
     TupleDesc tupdesc;
     List *pred_str;
+    List *dpcontext;
 
     plan = (ForeignScan *) node->ss.ps.plan;
 
@@ -794,12 +795,16 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
         ExplainPropertyList("Geometry predicates", pred_str, es);
 
     i = 1;
+    dpcontext = deparse_context_for_planstate((Node*) node, NIL, es->rtable);
     foreach(l, plan->fdw_exprs)
     {
         StringInfoData str;
+        char *expr;
+
         initStringInfo(&str);
         appendStringInfo(&str, "arg%d", i);
-        ExplainPropertyText(str.data, nodeToString(lfirst(l)), es);
+        expr = deparse_expression(lfirst(l), dpcontext, false, false);
+        ExplainPropertyText(str.data, expr, es);
         i++;
     }
 }
