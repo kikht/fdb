@@ -792,6 +792,16 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
     
     if (list_length(pred_str) > 0)
         ExplainPropertyList("Geometry predicates", pred_str, es);
+
+    i = 1;
+    foreach(l, plan->fdw_exprs)
+    {
+        StringInfoData str;
+        initStringInfo(&str);
+        appendStringInfo(&str, "arg%d", i);
+        ExplainPropertyText(str.data, nodeToString(lfirst(l)), es);
+        i++;
+    }
 }
 
 static int
