@@ -10,6 +10,7 @@
 #define FLAG_SHIFT_LONGITUDE 0x1
 #define FLAG_HAS_FOOTPRINT   0x2
 #define FLAG_HAS_POINT       0x4
+#define FLAG_INVERSE_SCALE   0x8
 
 const HvaultFileDriverMethods hvaultModisSwathMethods;
 
@@ -35,6 +36,7 @@ typedef struct
     int32_t dims[H4_MAX_VAR_DIMS];
     char const * scale_att;
     char const * offset_att;
+    uint32_t flags;
 } HvaultModisSwathLayer;
 
 typedef struct 
@@ -317,10 +319,10 @@ addRegularColumn (HvaultModisSwathDriver * driver,
     layer->scale_att = defFindStringByName(options, HVAULT_COLUMN_OPTION_SCALE);
     layer->offset_att = defFindStringByName(options, 
                                             HVAULT_COLUMN_OPTION_OFFSET);
-    if (layer->scale_att == NULL || layer->offset_att == NULL)
+    def = defFindByName(options, HVAULT_COLUMN_OPTION_INVERSE_SCALE);
+    if (def != NULL && defGetBoolean(def))
     {
-        layer->scale_att = NULL;
-        layer->offset_att = NULL;   
+        layer->flags |= FLAG_INVERSE_SCALE;
     }
 
     driver->layers = lappend(driver->layers, layer);
@@ -414,7 +416,7 @@ hvaultModisSwathClose (HvaultFileDriver * drv)
     driver->num_samples = 0;
 }
 
-static int32_t 
+static int 
 readPrefixedAttr (HvaultModisSwathLayer const * layer, 
                   char const * attname, 
                   double * val)
@@ -483,32 +485,6 @@ readPrefixedAttr (HvaultModisSwathLayer const * layer,
     }
     pfree(buf);
     return SUCCEED;
-}
-
-static int32_t
-fillScale (HvaultModisSwathLayer * layer)
-{
-    if (layer->scale_att != NULL && layer->offset_att != NULL)
-    {
-        if (readPrefixedAttr(layer, layer->scale_att, &layer->layer.scale) 
-            != SUCCEED)
-        {
-            return FAIL;
-        }
-        if (readPrefixedAttr(layer, layer->offset_att, &layer->layer.offset) 
-            != SUCCEED)
-        {
-            return FAIL;
-        }
-        return SUCCEED;
-    } 
-    else 
-    {
-        double cal_err, offset_err;
-        int32_t sdtype;
-        return SDgetcal(layer->sds_id, &layer->layer.scale, &cal_err, 
-                        &layer->layer.offset, &offset_err, &sdtype);
-    }
 }
 
 static void 
@@ -769,12 +745,31 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
         /* Get range, scale and offset */
         if (layer->coltypid == FLOAT8OID)
         {
-            if (fillScale(layer) != SUCCEED)
+            layer->layer.scale = 1.;
+            layer->layer.offset = 0;
+            if (layer->scale_att != NULL)
+                readPrefixedAttr(layer, layer->scale_att, 
+                                 &layer->layer.scale);
+            if (layer->offset_att != NULL)
+                readPrefixedAttr(layer, layer->offset_att, 
+                                 &layer->layer.offset);
+            if (layer->scale_att == NULL && layer->offset_att == NULL)
             {
-                layer->layer.scale = 1.;
-                layer->layer.offset = 0;
+                double cal_err, offset_err;
+                int32_t sdtype;
+                SDgetcal(layer->sds_id, &layer->layer.scale, &cal_err, 
+                         &layer->layer.offset, &offset_err, &sdtype);
             }
 
+            if (layer->flags & FLAG_INVERSE_SCALE)
+            {
+                double new_scale = 1.0 / layer->layer.scale;
+                double new_offset = -layer->layer.offset * layer->layer.scale;
+                layer->layer.scale = new_scale;
+                layer->layer.offset = new_offset;
+            }
+
+            
             if (layer->layer.range == NULL)
                 layer->layer.range = palloc(layer->layer.item_size * 2);
             if (SDgetrange(layer->sds_id, 

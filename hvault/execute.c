@@ -431,7 +431,7 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                 return; \
             } \
         } \
-        *static_dst = dst / layer->scale - layer->offset; \
+        *static_dst = layer->scale * (dst - layer->offset); \
         state->values[layer->colnum] = Float8GetDatumFast(*static_dst); \
     } \
 } while(0)

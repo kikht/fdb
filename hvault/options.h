@@ -16,6 +16,7 @@
 #define HVAULT_COLUMN_OPTION_PREFIX "prefix"
 #define HVAULT_COLUMN_OPTION_SCALE "scale"
 #define HVAULT_COLUMN_OPTION_OFFSET "offset"
+#define HVAULT_COLUMN_OPTION_INVERSE_SCALE "inverse_scale"
 
 HvaultColumnType hvaultGetColumnType (DefElem * def);
 
