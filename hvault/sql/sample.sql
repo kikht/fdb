@@ -89,3 +89,5 @@ SELECT file_id, line_id, sample_id
     FROM modis1km 
     WHERE ST_Contains(point, ST_GeometryFromText('POLYGON((66.89 61.16,66.92 61.16,66.92 61.15,66.89 61.15,66.89 61.16))')) 
     LIMIT 10;
+
+select cloud_mask from modis1km where cloud_mask is not null limit 10;

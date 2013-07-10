@@ -474,6 +474,7 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                        ((char *) layer->data) + layer->item_size * idx, 
                        layer->item_size);
                 state->values[layer->colnum] = VarBitPGetDatum(layer->temp);
+                state->nulls[layer->colnum] = false;
             }
             break;
         case HvaultPrefixBitmap:
@@ -487,6 +488,7 @@ fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
                         ((char *) layer->data)[idx + i * bitmap_stride];
                 }
                 state->values[layer->colnum] = VarBitPGetDatum(layer->temp);
+                state->nulls[layer->colnum] = false;
             }
             break;
         default:
