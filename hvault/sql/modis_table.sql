@@ -141,57 +141,57 @@ CREATE FOREIGN TABLE modis1km (
     Band_3_Path_Radiance              float8  OPTIONS (cat_name 'mod09', dataset '1km Band 3 Path Radiance', inverse_scale 'true'),
 
 -- MOD35 layers
-    Cloud_Mask                        bit(48) OPTIONS (cat_name 'mod35', bitmap_type 'prefix',  bitmap_dims '1', dataset 'Cloud_Mask'),
-    Cloud_Mask_QA                     bit(80) OPTIONS (cat_name 'mod35', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance'),
+    Cloud_Mask                        bit(48) OPTIONS (cat_name 'mod35_l2', bitmap_type 'prefix',  bitmap_dims '1', dataset 'Cloud_Mask'),
+    Cloud_Mask_QA                     bit(80) OPTIONS (cat_name 'mod35_l2', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance'),
 
 -- MOD04 layers
 -- 10km layers are commented out
-    -- Aerosol_Type_Land                             int2    OPTIONS (cat_name 'mod04', factor '10', dataset 'Aerosol_Type_Land'),
-    -- Angstrom_Exponent_Land                        float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Angstrom_Exponent_Land'),
-    -- Cloud_Fraction_Land                           float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Cloud_Fraction_Land'),
-    -- Cloud_Fraction_Ocean                          float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Cloud_Fraction_Ocean'),
-    -- Corrected_Optical_Depth_Land_wav2p1           float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Corrected_Optical_Depth_Land_wav2p1'),
-    -- Deep_Blue_Aerosol_Optical_Depth_550_Land      float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Deep_Blue_Aerosol_Optical_Depth_550_Land'),
-    -- Deep_Blue_Aerosol_Optical_Depth_550_Land_STD  float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Deep_Blue_Aerosol_Optical_Depth_550_Land_STD'),
-    -- Deep_Blue_Angstrom_Exponent_Land              float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Deep_Blue_Angstrom_Exponent_Land'),
-    -- Fitting_Error_Land                            float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Fitting_Error_Land'),
-    -- Image_Optical_Depth_Land_And_Ocean            float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Image_Optical_Depth_Land_And_Ocean'),
-    -- Mass_Concentration_Land                       float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Mass_Concentration_Land'),
-    -- Number_Pixels_Used_Ocean                      int2    OPTIONS (cat_name 'mod04', factor '10', dataset 'Number_Pixels_Used_Ocean'),
-    -- Optical_Depth_Land_And_Ocean                  float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Optical_Depth_Land_And_Ocean'),
-    -- Optical_Depth_Ratio_Small_Land                float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Optical_Depth_Ratio_Small_Land'),
-    -- Optical_Depth_Ratio_Small_Land_And_Ocean      float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Optical_Depth_Ratio_Small_Land_And_Ocean'),
-    -- Scattering_Angle                              float8  OPTIONS (cat_name 'mod04', factor '10', dataset 'Scattering_Angle'),
-    -- MOD04_Quality_Assurance_Ocean                 bit(40) OPTIONS (cat_name 'mod04', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Ocean'),
-    -- MOD04_Quality_Assurance_Land                  bit(40) OPTIONS (cat_name 'mod04', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Land'),
-    -- MOD04_Quality_Assurance_Crit_Ref_Land         bit(40) OPTIONS (cat_name 'mod04', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Crit_Ref_Land'),
+    -- Aerosol_Type_Land                             int2    OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Aerosol_Type_Land'),
+    -- Angstrom_Exponent_Land                        float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Angstrom_Exponent_Land'),
+    -- Cloud_Fraction_Land                           float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Cloud_Fraction_Land'),
+    -- Cloud_Fraction_Ocean                          float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Cloud_Fraction_Ocean'),
+    -- Corrected_Optical_Depth_Land_wav2p1           float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Corrected_Optical_Depth_Land_wav2p1'),
+    -- Deep_Blue_Aerosol_Optical_Depth_550_Land      float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Deep_Blue_Aerosol_Optical_Depth_550_Land'),
+    -- Deep_Blue_Aerosol_Optical_Depth_550_Land_STD  float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Deep_Blue_Aerosol_Optical_Depth_550_Land_STD'),
+    -- Deep_Blue_Angstrom_Exponent_Land              float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Deep_Blue_Angstrom_Exponent_Land'),
+    -- Fitting_Error_Land                            float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Fitting_Error_Land'),
+    -- Image_Optical_Depth_Land_And_Ocean            float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Image_Optical_Depth_Land_And_Ocean'),
+    -- Mass_Concentration_Land                       float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Mass_Concentration_Land'),
+    -- Number_Pixels_Used_Ocean                      int2    OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Number_Pixels_Used_Ocean'),
+    -- Optical_Depth_Land_And_Ocean                  float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Optical_Depth_Land_And_Ocean'),
+    -- Optical_Depth_Ratio_Small_Land                float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Optical_Depth_Ratio_Small_Land'),
+    -- Optical_Depth_Ratio_Small_Land_And_Ocean      float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Optical_Depth_Ratio_Small_Land_And_Ocean'),
+    -- Scattering_Angle                              float8  OPTIONS (cat_name 'mod04_l2', factor '10', dataset 'Scattering_Angle'),
+    -- MOD04_Quality_Assurance_Ocean                 bit(40) OPTIONS (cat_name 'mod04_l2', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Ocean'),
+    -- MOD04_Quality_Assurance_Land                  bit(40) OPTIONS (cat_name 'mod04_l2', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Land'),
+    -- MOD04_Quality_Assurance_Crit_Ref_Land         bit(40) OPTIONS (cat_name 'mod04_l2', factor '10', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Crit_Ref_Land'),
     -- TODO: lot more
 
 -- MOD05 layers
-    Water_Vapor_Near_Infrared                     float8  OPTIONS (cat_name 'mod05', dataset 'Water_Vapor_Near_Infrared'),
-    Water_Vapor_Correction_Factors                int2    OPTIONS (cat_name 'mod05', dataset 'Water_Vapor_Correction_Factors'),
-    MOD05_Quality_Assurance_Near_Infrared         bit(8)  OPTIONS (cat_name 'mod05', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Near_Infrared')
+    Water_Vapor_Near_Infrared                     float8  OPTIONS (cat_name 'mod05_l2', dataset 'Water_Vapor_Near_Infrared'),
+    Water_Vapor_Correction_Factors                int2    OPTIONS (cat_name 'mod05_l2', dataset 'Water_Vapor_Correction_Factors'),
+    MOD05_Quality_Assurance_Near_Infrared         bit(8)  OPTIONS (cat_name 'mod05_l2', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Near_Infrared')
 
-    -- Water_Vapor_Infrared                          float8  OPTIONS (cat_name 'mod05', factor '5', dataset 'Water_Vapor_Infrared'),
-    -- MOD05_Quality_Assurance_Infrared              bit(40) OPTIONS (cat_name 'mod05', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared'),
+    -- Water_Vapor_Infrared                          float8  OPTIONS (cat_name 'mod05_l2', factor '5', dataset 'Water_Vapor_Infrared'),
+    -- MOD05_Quality_Assurance_Infrared              bit(40) OPTIONS (cat_name 'mod05_l2', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared'),
 
 -- MOD07 layers
-    -- K_Index                     float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'K_Index'),
-    -- Lifted_Index                float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Lifted_Index'),
-    -- Surface_Elevation           float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Surface_Elevation'),
-    -- Surface_Temperature         float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Surface_Temperature'),
-    -- Total_Ozone                 float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Total_Ozone'),
-    -- Total_Totals                float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Total_Totals'),
-    -- Tropopause_Height           float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Tropopause_Height'),
-    -- Water_Vapor                 float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Water_Vapor'),
-    -- Water_Vapor_Direct          float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Water_Vapor_Direct'),
-    -- Water_Vapor_High            float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Water_Vapor_High'),
-    -- Water_Vapor_Low             float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Water_Vapor_Low'),
-    -- Surface_Pressure            float8  OPTIONS (cat_name 'mod07', factor '5', dataset 'Surface_Pressure'),
+    -- K_Index                     float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'K_Index'),
+    -- Lifted_Index                float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Lifted_Index'),
+    -- Surface_Elevation           float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Surface_Elevation'),
+    -- Surface_Temperature         float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Surface_Temperature'),
+    -- Total_Ozone                 float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Total_Ozone'),
+    -- Total_Totals                float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Total_Totals'),
+    -- Tropopause_Height           float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Tropopause_Height'),
+    -- Water_Vapor                 float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Water_Vapor'),
+    -- Water_Vapor_Direct          float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Water_Vapor_Direct'),
+    -- Water_Vapor_High            float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Water_Vapor_High'),
+    -- Water_Vapor_Low             float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Water_Vapor_Low'),
+    -- Surface_Pressure            float8  OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Surface_Pressure'),
 
-    -- MOD07_Processing_Flag             int2    OPTIONS (cat_name 'mod07', factor '5', dataset 'Processing_Flag'),
-    -- MOD07_Quality_Assurance           bit(80) OPTIONS (cat_name 'mod07', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance'),
-    -- MOD07_Quality_Assurance_Infrared  bit(40) OPTIONS (cat_name 'mod07', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared')
+    -- MOD07_Processing_Flag             int2    OPTIONS (cat_name 'mod07_l2', factor '5', dataset 'Processing_Flag'),
+    -- MOD07_Quality_Assurance           bit(80) OPTIONS (cat_name 'mod07_l2', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance'),
+    -- MOD07_Quality_Assurance_Infrared  bit(40) OPTIONS (cat_name 'mod07_l2', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared')
     --TODO:
     -- Retrieved_Height_Profile (20, 306, 270)
     -- Guess_Temperature_Profile (20, 306, 270)
@@ -217,9 +217,9 @@ CREATE FOREIGN TABLE modis500m (
     footprint geometry  OPTIONS (type 'footprint', cat_name 'mod03', factor '2'),
 
 -- MOD10 layers
-    Snow_Cover                  int2    OPTIONS (cat_name 'mod10', dataset 'Snow_Cover'),
-    Fractional_Snow_Cover       int2    OPTIONS (cat_name 'mod10', dataset 'Fractional_Snow_Cover'),
-    Snow_Cover_Pixel_QA         int2    OPTIONS (cat_name 'mod10', dataset 'Snow_Cover_Pixel_QA'),
+    Snow_Cover                  int2    OPTIONS (cat_name 'mod10_l2', dataset 'Snow_Cover'),
+    Fractional_Snow_Cover       int2    OPTIONS (cat_name 'mod10_l2', dataset 'Fractional_Snow_Cover'),
+    Snow_Cover_Pixel_QA         int2    OPTIONS (cat_name 'mod10_l2', dataset 'Snow_Cover_Pixel_QA'),
 
 -- MOD09 layers
     Surface_Reflectance_Band_1  float8  OPTIONS (cat_name 'mod09', dataset '500m Surface Reflectance Band 1'),
