@@ -1,8 +1,10 @@
-POSTGRES_PREFIX=/usr/pgsql-9.2
+PG_CONFIG=pg_config
+PG_PKGLIBDIR=$(shell $(PG_CONFIG) --pkglibdir)
+PG_EXTDIR=$(shell $(PG_CONFIG) --sharedir)/extension
 
-INC=-I$(POSTGRES_PREFIX)/include/server/
+INC=-I$(shell $(PG_CONFIG) --includedir-server)
 HDFLIB=-L/usr/lib{,64}/hdf -lmfhdf -ldf -ljpeg -lz 
-LIB=-l:$(POSTGRES_PREFIX)/lib/postgis-2.0.so $(HDFLIB)
+LIB=-l:$(PG_PKGLIBDIR)/postgis-2.0.so $(HDFLIB)
 
 CFLAGS = -std=gnu99 -fPIC -D_POSIX_C_SOURCE -DUSE_ASSERT_CHECKING \
          -g -Wall -Wextra -pedantic
@@ -26,6 +28,6 @@ clean:
 	rm -rf *.o *.so drivers/*.o
 
 install: hvault.so hvault--0.1.sql hvault.control
-	install --mode=755 hvault.so $(POSTGRES_PREFIX)/lib
-	install --mode=644 hvault--0.1.sql $(POSTGRES_PREFIX)/share/extension
-	install --mode=644 hvault.control $(POSTGRES_PREFIX)/share/extension
+	install --mode=755 hvault.so $(PG_PKGLIBDIR)
+	install --mode=644 hvault--0.1.sql $(PG_EXTDIR)
+	install --mode=644 hvault.control $(PG_EXTDIR)
