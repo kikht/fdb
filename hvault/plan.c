@@ -400,6 +400,7 @@ hvaultGetRelSize (PlannerInfo *root,
                              processUsedColumn, ctx);
     hvaultAnalyzeUsedColumns((Node *) root->eq_classes, baserel->relid, 
                              processUsedColumn, ctx);
+    /* TODO: add driver-dependent metadata columns */
 
     /* TODO: Use constant catalog quals for better estimate */
     /* Use driver-dependent tuples per file estimate */

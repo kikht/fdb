@@ -138,8 +138,9 @@ static void
 hvaultModisSwathFree (HvaultFileDriver * drv)
 {
     HvaultModisSwathDriver * driver = (HvaultModisSwathDriver *) drv;
-
+    
     Assert(driver->driver.methods == &hvaultModisSwathMethods);
+    /* TODO: Close all opened files */
     MemoryContextDelete(driver->memctx);
 }
 
@@ -149,6 +150,7 @@ makeLayer()
     HvaultModisSwathLayer * res = palloc0(sizeof(HvaultModisSwathLayer));
     res->sds_id = -1;
     res->sds_type = -1;
+    /* TODO: move this part to common func */
     res->layer.colnum = -1;
     res->layer.type = HvaultInvalidLayerType;
     res->layer.src_type = HvaultInvalidDataType;
@@ -302,6 +304,10 @@ addRegularColumn (HvaultModisSwathDriver * driver,
         char * end = NULL;
         unsigned long val;
         do {
+            if (layer->prefix_dims >= H4_MAX_VAR_DIMS) 
+            {
+                elog(ERROR, "Too many prefix dimensions");
+            }
             errno = 0;
             val = strtoul(start, &end, 10);
             if (!errno)
@@ -897,7 +903,6 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
         {
             elog(ERROR, "Can't read data from %s dataset %s", 
                  layer->file->filename, layer->sds_name);
-            MemoryContextSwitchTo(oldmemctx);
             return; /* will never reach here */
         }
         

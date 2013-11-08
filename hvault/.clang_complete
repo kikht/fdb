@@ -1,0 +1,7 @@
+-std=gnu99 
+-D_POSIX_C_SOURCE 
+-DUSE_ASSERT_CHECKING 
+-I/usr/include/pgsql/server
+-pedantic
+-Wall
+-Wextra

@@ -202,6 +202,7 @@ CREATE FOREIGN TABLE modis1km (
 
 ) SERVER hvault_service
   OPTIONS (catalog 'catalog',
+           driver 'modis_swath',
            shift_longitude 'true');
 
 CREATE FOREIGN TABLE modis500m (
@@ -233,4 +234,5 @@ CREATE FOREIGN TABLE modis500m (
 
 ) SERVER hvault_service
   OPTIONS (catalog 'catalog',
+           driver 'modis_swath',
            shift_longitude 'true');
