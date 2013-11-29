@@ -121,9 +121,12 @@ hvaultCatalogGetParams (HvaultCatalogQuery query)
 static void buildQueryString (HvaultCatalogQuery query, StringInfo query_str)
 {
     struct NameHash *p;
-
-    Assert(query->columns != NULL);
-    Assert(HASH_COUNT(query->columns) > 0);
+    
+    if (query->columns == NULL || HASH_COUNT(query->columns) <= 0)
+    {
+        elog(ERROR, "At least one column must be added to query");
+        return; /* Will never reach this */
+    }
     
     appendStringInfoString(query_str, "SELECT ");
     appendStringInfoString(query_str, query->columns->key);
