@@ -119,11 +119,11 @@ hvaultModisSwathInit (List * table_options, MemoryContext memctx)
                                                 ALLOCSET_SMALL_MAXSIZE);
 
     driver->flags = 0;
-    def = defFindByName(table_options, "shift_longitude");
+    def = defFindByName(table_options, HVAULT_TABLE_OPTION_SHIFT_LONGITUDE);
     if (def != NULL && defGetBoolean(def))
         driver->flags |= FLAG_SHIFT_LONGITUDE;
 
-    def = defFindByName(table_options, HVAULT_COLUMN_OPTION_SCANLINE);
+    def = defFindByName(table_options, HVAULT_TABLE_OPTION_SCANLINE);
     driver->scanline_size = def != NULL ? defGetInt64(def) 
                                         : DEFAULT_SCANLINE_SIZE;
 
@@ -900,7 +900,8 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
             MemoryContextSwitchTo(oldmemctx);
             return; /* will never reach here */
         }
-
+        
+        /* We don't need to pass geolocation data as layers */
         if (layer->layer.colnum >= 0)
             chunk->layers = lappend(chunk->layers, layer);
     }

@@ -10,13 +10,16 @@
 #define HVAULT_COLUMN_OPTION_HFACTOR "hfactor"
 #define HVAULT_COLUMN_OPTION_VFACTOR "vfactor"
 #define HVAULT_COLUMN_OPTION_DATASET "dataset"
-#define HVAULT_COLUMN_OPTION_SCANLINE "scanline"
 #define HVAULT_COLUMN_OPTION_BITMAPDIMS "bitmap_dims"
 #define HVAULT_COLUMN_OPTION_BITMAPTYPE "bitmap_type"
 #define HVAULT_COLUMN_OPTION_PREFIX "prefix"
 #define HVAULT_COLUMN_OPTION_SCALE "scale"
 #define HVAULT_COLUMN_OPTION_OFFSET "offset"
 #define HVAULT_COLUMN_OPTION_INVERSE_SCALE "inverse_scale"
+
+#define HVAULT_TABLE_OPTION_DRIVER "driver"
+#define HVAULT_TABLE_OPTION_SHIFT_LONGITUDE "shift_longitude"
+#define HVAULT_TABLE_OPTION_SCANLINE "scanline"
 
 HvaultColumnType hvaultGetColumnType (DefElem * def);
 
