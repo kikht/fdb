@@ -316,6 +316,73 @@ static size_t op ## _ ## src_type ## _ ## neg (  \
     return j; \
 } 
 
+/* predicate template */
+static size_t Overlaps_compact_positive (
+    size_t * idx,
+    size_t len,
+    HvaultFileChunk const * const data,
+    GBOX const * const arg)
+{
+    size_t i, j;
+    if (len == data->size)
+    {
+        /* Use full dataset */
+        /*predicate_cycle(cur_simple, src_type ## _bounds, op ## _op, neg);*/
+        for (i = 0, j = 0; i < len; i++)
+        {
+            float latmin, latmax, lonmin, lonmax;
+
+            /* cur_simple */
+            size_t cur = i;
+
+            /* compact bounds */
+            float ul, ur, lr, ll;
+            size_t pos = cur + cur / data->stride;
+          
+            ul = data->lat[pos];
+            ur = data->lat[pos + 1];
+            lr = data->lat[pos + data->stride + 2];
+            ll = data->lat[pos + data->stride + 1];
+
+            /*bounds(ul, ur, lr, ll, latmin, latmax);*/
+            {
+                float minab, maxab, mincd, maxcd;
+                minab = min(ul, ur);
+                maxab = max(ul, ur);
+                mincd = min(lr, ll);
+                maxcd = max(lr, ll);
+                latmin = min(minab, mincd);
+                latmax = max(maxab, maxcd);
+            }
+
+         
+            ul = data->lon[pos];
+            ur = data->lon[pos + 1];
+            lr = data->lon[pos + data->stride + 2];
+            ll = data->lon[pos + data->stride + 1];
+            /*bounds(ul, ur, lr, ll, lonmin, lonmax); */
+            {
+                float minab, maxab, mincd, maxcd;
+                minab = min(ul, ur);
+                maxab = max(ul, ur);
+                mincd = min(lr, ll);
+                maxcd = max(lr, ll);
+                lonmin = min(minab, mincd);
+                lonmax = max(maxab, maxcd);
+            }
+            
+            if (Overlaps_op(latmin, latmax, lonmin, lonmax, arg) ^ (false))
+                idx[j++] = i;
+        }
+    }
+    else
+    {
+        /* Use selected indices */
+        predicate_cycle(cur_indexed, compact_bounds, Overlaps_op, false);
+    }
+    return j;
+} 
+
 #define predicate_multitemplate(op) \
     predicate_template(simple, op, positive) \
     predicate_template(simple, op, negative) \
@@ -342,7 +409,9 @@ static size_t op ## _ ## src_type ## _ ## neg (  \
     item(CommAbove) \
     item(CommBelow) 
 
+#define Overlaps_compact_positive Overlaps_compact_positive_other
 operators_list(predicate_multitemplate)
+#undef Overlaps_compact_positive
 
 #define predicate_name(op, src_type) \
     op ## _ ## src_type ## _ ## positive, \
