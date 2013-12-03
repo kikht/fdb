@@ -466,6 +466,9 @@ hvaultGDALOpen (HvaultFileDriver        * drv,
         Assert(driver->driver.methods == &hvaultGDALMethods);
         hvaultGDALClose(drv);
 
+        /* debug info */
+        MemoryContextStats(TopMemoryContext);
+
         if (list_length(driver->layers) == 0)
         {
             elog(ERROR, 
@@ -645,7 +648,11 @@ hvaultGDALOpen (HvaultFileDriver        * drv,
                     GDALGetRasterNoDataValue(layer->band, &fill_value_res);
                 if (fill_value_res) 
                 {
-                    layer->layer.fill_val = palloc(layer->layer.item_size);
+                    if (layer->layer.fill_val == NULL)
+                    {
+                        layer->layer.fill_val = palloc(layer->layer.item_size);
+                    }
+
                     doubleToType(fill_val, layer->layer.src_type, 
                                  layer->layer.fill_val);
                 }
@@ -679,9 +686,11 @@ hvaultGDALOpen (HvaultFileDriver        * drv,
             }
 
             if (layer->layer.data == NULL)
+            {
                 layer->layer.data = palloc(layer->layer.item_size *
                                            layer->num_samples * 
                                            layer->num_lines);
+            }
         } /* end layer loop */
 
         /* Sanity check */
@@ -788,52 +797,94 @@ getGeolocation (HvaultGDALDriver * driver,
 
     Assert(driver->geo_cache != NULL);
     Assert(driver->geo_cache_last != NULL);
+        
+    oldmemctx = MemoryContextSwitchTo(driver->memctx);
     
-    /* Search cache for tile */
     if (tile != NULL)
     {
-        cur = driver->geo_cache_last;
-        do 
+        elog(DEBUG1, "hvault: searching cache for geolocation %s", tile);
+        
+        /* Search cache for tile */
+        cur = driver->geo_cache;
+        if (cur->tile != NULL && strcmp(cur->tile, tile) == 0) 
         {
+            elog(DEBUG1, "hvault: found geolocation in cache first");
+            MemoryContextSwitchTo(oldmemctx);
+            return cur;
+        } 
+        else 
+        {
+            while (cur->next != driver->geo_cache_last) 
+            {
+                prev = cur;
+                cur = cur->next;
+                cur_num++;
+
+                if (cur->tile != NULL && strcmp(cur->tile, tile) == 0)
+                {
+                    /* Move to first position */
+                    prev->next = cur->next;
+                    cur->next = driver->geo_cache;
+                    driver->geo_cache = cur;
+                    driver->geo_cache_last->next = cur;
+
+                    elog(DEBUG1, "hvault: found geolocation in cache");
+                    MemoryContextSwitchTo(oldmemctx);
+                    return cur;
+                }
+            }
+
             prev = cur;
             cur = cur->next;
-            cur_num++;
-
-            if (cur->tile != NULL && strcmp(cur->tile, tile) == 0) {
+            if (cur->tile != NULL && strcmp(cur->tile, tile) == 0)
+            {
                 /* Move to first position */
-                prev->next = cur->next;
-                cur->next = driver->geo_cache;
                 driver->geo_cache = cur;
-                driver->geo_cache_last->next = cur;
-
+                driver->geo_cache_last = prev;
+                    
+                elog(DEBUG1, "hvault: found geolocation in cache last");
+                MemoryContextSwitchTo(oldmemctx);
                 return cur;
             }
-        } while (cur->next != driver->geo_cache);
-    }
+        }
 
-    oldmemctx = MemoryContextSwitchTo(driver->memctx);
+        /* Not found in cache. Create new bucket or reuse one */
+        if (cur_num < driver->geo_cache_size && cur->tile != NULL)
+        {
+            elog(DEBUG1, "hvault: creating new bucket for geolocation");
+            /* Create new bucket */
+            cur = createGeolocation(driver);
+            
+            /* Set as first item */
+            cur->next = driver->geo_cache;
+            driver->geo_cache = cur;
+            driver->geo_cache_last->next = cur;
+        }
+        else 
+        {
+            elog(DEBUG1, "hvault: reusing bucket for geolocation");
 
-    if (cur_num < driver->geo_cache_size)
+            /* Pick up last one (cur already points at it)*/
+            Assert(driver->geo_cache_last == cur);
+            
+            /* Set as first item */
+            driver->geo_cache = cur;
+            driver->geo_cache_last = prev;
+        }
+
+        if (cur->tile != NULL)
+            pfree((void *) cur->tile);
+        cur->tile = pstrdup(tile);
+    } 
+    else
     {
-        /* Create new bucket */
-        cur = createGeolocation(driver);
-        
-        /* Set as first item */
-        cur->next = driver->geo_cache;
-        driver->geo_cache = cur;
-        driver->geo_cache_last->next = cur;
+        elog(DEBUG1, "hvault: can't search geolocation cache");
+        /* Can't search in cache, just reuse last bucket without moving it*/
+        cur = driver->geo_cache_last;
+        if (cur->tile != NULL)
+            pfree((void *) cur->tile);
+        cur->tile = NULL;
     }
-    else 
-    {
-        /* Pick up last one (cur already points at it)*/
-        Assert(driver->geo_cache_last == cur);
-        
-        /* Set as first item */
-        driver->geo_cache = cur;
-        driver->geo_cache_last = prev;
-    }
-
-    cur->tile = pstrdup(tile);
 
     Assert(driver->lon_temp != NULL);
     Assert(driver->lat_temp != NULL);
