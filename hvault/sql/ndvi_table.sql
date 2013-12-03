@@ -1,7 +1,8 @@
-CREATE FOREIGN TABLE ndvi (
+CREATE FOREIGN TABLE ndvi_16days (
     file_id   int4      OPTIONS (type 'catalog', cat_name 'id'),
     starttime timestamp OPTIONS (type 'catalog', cat_name 'starttime'),
     stoptime  timestamp OPTIONS (type 'catalog', cat_name 'stoptime'),
+    tile      text      OPTIONS (type 'catalog', cat_name 'tile'),
 
     index     int4      OPTIONS (type 'index'),
     line_id   int4      OPTIONS (type 'line_index'),
@@ -24,7 +25,12 @@ CREATE FOREIGN TABLE ndvi (
     composite_day_of_the_year  int2  OPTIONS (cat_name 'mod13q1', dataset 'HDF4_EOS:EOS_GRID:"%f":MODIS_Grid_16DAY_250m_500m_VI:250m 16 days composite day of the year'),
     pixel_reliability          int2  OPTIONS (cat_name 'mod13q1', dataset 'HDF4_EOS:EOS_GRID:"%f":MODIS_Grid_16DAY_250m_500m_VI:250m 16 days pixel reliability')
 ) SERVER hvault_service
-  OPTIONS (catalog 'gdal_catalog',
+  OPTIONS (catalog 'ndvi_catalog',
            driver 'gdal',
            shift_longitude 'true');
+
+create view lst_catalog as 
+    (table lst_catalog_aqua) union all (table lst_catalog_terra);
+create view ndvi_catalog as 
+    (table ndvi_catalog_aqua) union all (table ndvi_catalog_terra);
 
