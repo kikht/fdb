@@ -4,7 +4,8 @@ PG_EXTDIR=$(shell $(PG_CONFIG) --sharedir)/extension
 
 INC=-I$(shell $(PG_CONFIG) --includedir-server)
 HDFLIB=-L/usr/lib{,64}/hdf -lmfhdf -ldf -ljpeg -lz 
-LIB=-l:$(PG_PKGLIBDIR)/postgis-2.0.so -lgdal $(HDFLIB)
+#LIB=-l:$(PG_PKGLIBDIR)/postgis-2.1.so -lgdal $(HDFLIB)
+LIB=-lgdal $(HDFLIB)
 
 CFLAGS = -std=gnu99 -fPIC -D_POSIX_C_SOURCE -DUSE_ASSERT_CHECKING \
          -g -Wall -Wextra -pedantic

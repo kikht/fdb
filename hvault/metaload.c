@@ -15,6 +15,7 @@
 #include <funcapi.h>
 #include <utils/builtins.h>
 #include <utils/timestamp.h>
+#include <lib/stringinfo.h>
 
 /* HDF */
 #define int8 hdf_int8
