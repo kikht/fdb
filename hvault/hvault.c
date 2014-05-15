@@ -15,7 +15,7 @@ extern ForeignScan *    hvaultGetPlan    (PlannerInfo * root,
                                           List *        tlist, 
                                           List *        scan_clauses);
  
- extern void            hvaultExplain    (ForeignScanState * node, 
+extern void             hvaultExplain    (ForeignScanState * node, 
                                           ExplainState *     es);
  
 extern void             hvaultBegin      (ForeignScanState *node, int eflags);
@@ -29,6 +29,11 @@ extern bool             hvaultAnalyze    (Relation                relation,
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
+
+void
+_PG_init(void)
+{
+}
 
 const int hvaultDatatypeSize[HvaultNumDatatypes] = 
     {1, 1, 2, 2, 4, 4, 8, 8, 4, 8, -1};
