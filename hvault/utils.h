@@ -32,4 +32,7 @@ char * defFindStringByName (List * list, char const * key);
 /* Extracts int64_t from DefElem converting from string if necessary */
 int64_t defGetInt (DefElem * def);
 
+/* Extracts double from DefElem converting from string if necessary */
+double defGetDouble (DefElem * def);
+
 #endif /* _UTILS_H_ */

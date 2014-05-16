@@ -37,4 +37,11 @@ hvaultGetTableOptionString (Oid foreigntableid, char const * option)
     return def == NULL ? NULL : defGetString(def);
 }
 
+static inline double 
+hvaultGetTableOptionDouble (Oid foreigntableid, char const * option, double defval)
+{
+	DefElem * def = hvaultGetTableOption(foreigntableid, option);
+	return def == NULL ? defval : defGetDouble(def);
+}
+
 #endif /* _OPTIONS_H_ */

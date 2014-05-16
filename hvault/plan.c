@@ -39,6 +39,12 @@ typedef struct
     List *join_quals;
     List *ec_quals;
     List *considered_relids;
+	
+	Cost startup_cost;
+	Cost file_read_cost;
+	Cost predicate_cost;
+	Cost byte_cost;
+	double rows_per_file;
 } HvaultPlannerContext;
 
 static inline HvaultTableInfo * table (HvaultPlannerContext * ctx)
@@ -212,7 +218,7 @@ addForeignPaths (HvaultPlannerContext * ctx,
         double catrows;
         int catwidth;
         double rows;
-        Cost startup_cost, total_cost;
+        Cost startup_cost, total_cost, file_cost, pixel_cost;
         Selectivity selectivity;
 
         hvaultCatalogSetSort(query, sort->column, sort->desc);
@@ -220,12 +226,15 @@ addForeignPaths (HvaultPlannerContext * ctx,
         selectivity = clauselist_selectivity(ctx->root, pred_quals, 
                                              ctx->baserel->relid, 
                                              JOIN_INNER, NULL);
-        /* TODO: get rid of HVAULT_TUPLES_PER_FILE as it depends on driver */
-        rows = catrows * selectivity * HVAULT_TUPLES_PER_FILE;
-        startup_cost = catmin + STARTUP_COST;
-        /* TODO: predicate cost */
-        total_cost = catmax + STARTUP_COST + catrows * FILE_COST + 
-                     rows * PIXEL_COST;
+		
+		file_cost = ctx->file_read_cost + 
+			(predicates != NIL ? ctx->predicate_cost : 0) * ctx->rows_per_file;
+		pixel_cost = ctx->byte_cost * ctx->tuple_width;
+
+		rows = ctx->rows_per_file * catrows * selectivity;
+		startup_cost = ctx->startup_cost + catmin + file_cost + pixel_cost;
+		total_cost = ctx->startup_cost + catmax + catrows * file_cost 
+			+ rows * pixel_cost;
 
         if (add_path_precheck(ctx->baserel, startup_cost, total_cost, 
                               sort->pathkeys, req_outer))
@@ -402,10 +411,20 @@ hvaultGetRelSize (PlannerInfo *root,
                              processUsedColumn, ctx);
     /* TODO: add driver-dependent metadata columns */
 
+	ctx->startup_cost = hvaultGetTableOptionDouble(
+			foreigntableid, "startup_cost", 10);
+	ctx->file_read_cost = hvaultGetTableOptionDouble(
+			foreigntableid, "file_read_cost", 10);
+	ctx->predicate_cost = hvaultGetTableOptionDouble(
+			foreigntableid, "predicate_cost", 0.001);
+	ctx->byte_cost = hvaultGetTableOptionDouble(
+			foreigntableid, "byte_cost", 0.001);
+	ctx->rows_per_file = hvaultGetTableOptionDouble(
+			foreigntableid, "rows_per_file", HVAULT_TUPLES_PER_FILE);
+
     /* TODO: Use constant catalog quals for better estimate */
-    /* Use driver-dependent tuples per file estimate */
     baserel->rows = hvaultGetNumFiles(table(ctx)->catalog) 
-                  * HVAULT_TUPLES_PER_FILE;
+                  * ctx->rows_per_file;
     baserel->width = ctx->tuple_width;
     baserel->fdw_private = ctx;
 }

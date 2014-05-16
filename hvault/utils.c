@@ -69,13 +69,34 @@ defGetInt (DefElem * def)
             return (int64) intVal(def->arg);
         case T_Float:
         case T_String:
-            /*
-             * Values too large for int4 will be represented as Float
-             * constants by the lexer.  Accept these if they are valid int8
-             * strings.
-             */
             return DatumGetInt64(DirectFunctionCall1(int8in,
                                          CStringGetDatum(strVal(def->arg))));
+        default:
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("%s requires a numeric value",
+                            def->defname)));
+    }
+    return 0;                   /* keep compiler quiet */
+}
+
+double
+defGetDouble (DefElem * def)
+{
+    if (def->arg == NULL)
+        ereport(ERROR,
+                (errcode(ERRCODE_SYNTAX_ERROR),
+                 errmsg("%s requires a numeric value",
+                        def->defname)));
+    switch (nodeTag(def->arg))
+    {
+        case T_Integer:
+            return (double) intVal(def->arg);
+        case T_Float:
+			return floatVal(def->arg);
+        case T_String:
+			return DatumGetFloat8(DirectFunctionCall1(float8in,
+						                 CStringGetDatum(strVal(def->arg))));
         default:
             ereport(ERROR,
                     (errcode(ERRCODE_SYNTAX_ERROR),
