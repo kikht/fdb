@@ -34,6 +34,8 @@
 #include <utils/timestamp.h>
 #include <utils/varbit.h>
 
+#include <liblwgeom.h>
+
 #define HVAULT_TUPLES_PER_FILE (double)(2030*1354)
 
 typedef enum HvaultColumnType

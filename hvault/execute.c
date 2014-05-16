@@ -219,7 +219,7 @@ hvaultEnd(ForeignScanState *node)
     if (state == NULL)
         return;
 
-    if (state->driver)
+    if (state->driver) 
         state->driver->methods->free(state->driver);
 
     if (state->cursor)
@@ -965,6 +965,7 @@ hvaultAnalyze(Relation relation,
     }
 
     query = makeStringInfo();
+	/* FIXME: this query no longer works */
     appendStringInfo(query, 
                      "SELECT CAST(((SUM(size) + $1 - 1)/$1) AS float8) FROM %s", 
                      catalog);

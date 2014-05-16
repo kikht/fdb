@@ -2,7 +2,6 @@
 #define _PREDICATES_H_
 
 #include "driver.h"
-#include <liblwgeom.h>
 
 typedef size_t (* HvaultPredicate)(size_t * idx,
                                    size_t len, 
