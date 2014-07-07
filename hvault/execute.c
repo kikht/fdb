@@ -797,10 +797,16 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
         ExplainPropertyList("Geometry predicates", pred_str, es);
 
     i = 1;
+#if PG_VERSION_NUM >= 90300
     dpcontext = deparse_context_for_planstate((Node*) node, 
 			                                  NIL, 
 			                                  es->rtable,
 			                                  es->rtable_names);
+#else
+    dpcontext = deparse_context_for_planstate((Node*) node, 
+			                                  NIL, 
+			                                  es->rtable);
+#endif
     foreach(l, plan->fdw_exprs)
     {
         StringInfoData str;

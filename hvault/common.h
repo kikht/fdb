@@ -3,7 +3,6 @@
 
 #include <postgres.h>
 #include <access/htup.h>
-#include <access/htup_details.h>
 #include <access/skey.h>
 #include <catalog/namespace.h>
 #include <catalog/pg_namespace.h>
@@ -35,6 +34,11 @@
 #include <utils/varbit.h>
 
 #include <liblwgeom.h>
+#include "liblwgeom_version.h"
+
+#if PG_VERSION_NUM >= 90300
+#include <access/htup_details.h>
+#endif
 
 #define HVAULT_TUPLES_PER_FILE (double)(2030*1354)
 

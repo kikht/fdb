@@ -30,6 +30,7 @@ extern bool             hvaultAnalyze    (Relation                relation,
 PG_MODULE_MAGIC;
 #endif
 
+#if LIBLWGEOM_VERSION_MAJOR_INT >= 2 && LIBLWGEOM_VERSION_MINOR_INT >= 1
 #define ERRMSG_MAXLEN 256
 
 static void
@@ -59,6 +60,7 @@ _PG_init(void)
 {
 	lwgeom_set_handlers(palloc, repalloc, pfree, pg_error, pg_notice); 
 }
+#endif
 
 const int hvaultDatatypeSize[HvaultNumDatatypes] = 
     {1, 1, 2, 2, 4, 4, 8, 8, 4, 8, -1};
