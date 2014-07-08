@@ -234,6 +234,7 @@ struct HvaultCatalogCursorData
     char const *        name;
 
     MemoryContext       memctx;
+    HeapTuple           cur_tuple;
     HvaultCatalogItem * item;
 };
 
@@ -243,19 +244,15 @@ hvaultCatalogInitCursor (List * packed_query, MemoryContext memctx)
 {
     struct HvaultCatalogCursorData * cursor = NULL;
 
-    cursor = palloc(sizeof(struct HvaultCatalogCursorData));
+    cursor = palloc0(sizeof(struct HvaultCatalogCursorData));
     Assert(list_length(packed_query) == 2);
     cursor->query = strVal(linitial(packed_query));
     cursor->nargs = intVal(lsecond(packed_query));
-    cursor->prep_stmt = NULL;
-    cursor->name = NULL;
-    cursor->item = NULL;
     cursor->memctx = AllocSetContextCreate(memctx,
                                            "hvault_fdw catalog cursor data",
                                            ALLOCSET_SMALL_MINSIZE,
                                            ALLOCSET_SMALL_INITSIZE,
                                            ALLOCSET_SMALL_MAXSIZE);
-    //TODO: initialize vals array and use it to store Datum values
     return cursor;
 }
 
@@ -278,14 +275,12 @@ hvaultCatalogFreeCursor (HvaultCatalogCursor cursor)
         return; /* Will never reach this */
     }
 
-
     if (cursor->name != NULL)
     {
         Portal file_cursor = SPI_cursor_find(cursor->name);        
         SPI_cursor_close(file_cursor);
         cursor->name = NULL;
     }
-
 
     if (cursor->prep_stmt != NULL)
     {
@@ -324,6 +319,11 @@ fetchTuple (HvaultCatalogCursor cursor, Portal file_cursor)
     }   
 
     oldmemctx = MemoryContextSwitchTo(cursor->memctx);
+    /* Defensively copy whole tuple for future access*/
+    if (cursor->cur_tuple != NULL) 
+        pfree(cursor->cur_tuple);
+    cursor->cur_tuple = heap_copytuple(SPI_tuptable->vals[0]);
+
     for (i = 0; i < SPI_tuptable->tupdesc->natts; i++)
     {
         char * name = NULL;
@@ -341,9 +341,9 @@ fetchTuple (HvaultCatalogCursor cursor, Portal file_cursor)
                             strlen(column->name), column);
         }
 
-        column->val = heap_getattr(SPI_tuptable->vals[0], i+1, 
+        column->val = heap_getattr(cursor->cur_tuple, i+1, 
                                    SPI_tuptable->tupdesc, &isnull);
-        column->str = isnull ? NULL : SPI_getvalue(SPI_tuptable->vals[0], 
+        column->str = isnull ? NULL : SPI_getvalue(cursor->cur_tuple, 
                                                    SPI_tuptable->tupdesc, i+1);
     }
     MemoryContextSwitchTo(oldmemctx);

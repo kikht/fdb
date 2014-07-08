@@ -710,8 +710,6 @@ hvaultIterate (ForeignScanState *node)
 void 
 hvaultExplain(ForeignScanState *node, ExplainState *es)
 {
-    //TODO: port from old version
-
     ForeignScan *plan;
     List *packed_query, *packed_predicates, *coltypes;
     HvaultCatalogCursor cursor;
