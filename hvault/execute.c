@@ -799,13 +799,13 @@ hvaultExplain(ForeignScanState *node, ExplainState *es)
     i = 1;
 #if PG_VERSION_NUM >= 90300
     dpcontext = deparse_context_for_planstate((Node*) node, 
-			                                  NIL, 
-			                                  es->rtable,
-			                                  es->rtable_names);
+                                              NIL, 
+                                              es->rtable,
+                                              es->rtable_names);
 #else
     dpcontext = deparse_context_for_planstate((Node*) node, 
-			                                  NIL, 
-			                                  es->rtable);
+                                              NIL, 
+                                              es->rtable);
 #endif
     foreach(l, plan->fdw_exprs)
     {
@@ -971,7 +971,7 @@ hvaultAnalyze(Relation relation,
     }
 
     query = makeStringInfo();
-	/* FIXME: this query no longer works */
+    /* FIXME: this query no longer works */
     appendStringInfo(query, 
                      "SELECT CAST(((SUM(size) + $1 - 1)/$1) AS float8) FROM %s", 
                      catalog);

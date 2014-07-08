@@ -10,6 +10,6 @@ CREATE OR REPLACE FUNCTION hvault_fdw_handler()
 
 CREATE FOREIGN DATA WRAPPER hvault_fdw
     VALIDATOR hvault_fdw_validator
-	HANDLER   hvault_fdw_handler;
+    HANDLER   hvault_fdw_handler;
 
 CREATE SERVER hvault_service FOREIGN DATA WRAPPER hvault_fdw;

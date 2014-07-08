@@ -36,29 +36,29 @@ PG_MODULE_MAGIC;
 static void
 pg_error(const char *fmt, va_list ap)
 {
-        char errmsg[ERRMSG_MAXLEN+1];
+    char errmsg[ERRMSG_MAXLEN+1];
 
-        vsnprintf (errmsg, ERRMSG_MAXLEN, fmt, ap);
+    vsnprintf (errmsg, ERRMSG_MAXLEN, fmt, ap);
 
-        errmsg[ERRMSG_MAXLEN]='\0';
-        ereport(ERROR, (errmsg_internal("%s", errmsg)));
+    errmsg[ERRMSG_MAXLEN]='\0';
+    ereport(ERROR, (errmsg_internal("%s", errmsg)));
 }
 
 static void
 pg_notice(const char *fmt, va_list ap)
 {
-        char errmsg[ERRMSG_MAXLEN+1];
+    char errmsg[ERRMSG_MAXLEN+1];
 
-        vsnprintf (errmsg, ERRMSG_MAXLEN, fmt, ap);
+    vsnprintf (errmsg, ERRMSG_MAXLEN, fmt, ap);
 
-        errmsg[ERRMSG_MAXLEN]='\0';
-        ereport(NOTICE, (errmsg_internal("%s", errmsg)));
+    errmsg[ERRMSG_MAXLEN]='\0';
+    ereport(NOTICE, (errmsg_internal("%s", errmsg)));
 }
 
 void
 _PG_init(void)
 {
-	lwgeom_set_handlers(palloc, repalloc, pfree, pg_error, pg_notice); 
+    lwgeom_set_handlers(palloc, repalloc, pfree, pg_error, pg_notice); 
 }
 #endif
 

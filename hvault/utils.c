@@ -93,10 +93,10 @@ defGetDouble (DefElem * def)
         case T_Integer:
             return (double) intVal(def->arg);
         case T_Float:
-			return floatVal(def->arg);
+            return floatVal(def->arg);
         case T_String:
-			return DatumGetFloat8(DirectFunctionCall1(float8in,
-						                 CStringGetDatum(strVal(def->arg))));
+            return DatumGetFloat8(DirectFunctionCall1(float8in,
+                                  CStringGetDatum(strVal(def->arg))));
         default:
             ereport(ERROR,
                     (errcode(ERRCODE_SYNTAX_ERROR),
