@@ -14,6 +14,7 @@ typedef struct
 {
     HvaultQualType type;
     RestrictInfo * rinfo;
+    bool recheck;
     /* private data */
 } HvaultQual;
 

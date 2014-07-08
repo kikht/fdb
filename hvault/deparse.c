@@ -29,8 +29,10 @@ deparseVar(Var *node, HvaultDeparseContext *ctx)
         
         Assert(node->varattno > 0);
         Assert(node->varattno <= ctx->table->natts);
-        Assert(ctx->table->columns[node->varattno-1].type 
-               == HvaultColumnCatalog);
+        Assert(
+            ctx->table->columns[node->varattno-1].type == HvaultColumnCatalog 
+            || 
+            ctx->table->columns[node->varattno-1].type == HvaultColumnDataset);
 
         colname = ctx->table->columns[node->varattno-1].cat_name;
         Assert(colname);

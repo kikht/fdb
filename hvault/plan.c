@@ -192,7 +192,8 @@ addForeignPaths (HvaultPlannerContext * ctx,
     {
         HvaultQual * qual = lfirst(l);
         hvaultCatalogAddQual(query, qual);
-        own_quals = lappend(own_quals, qual->rinfo);
+        if (!qual->recheck)
+            own_quals = lappend(own_quals, qual->rinfo);
     }
     
 

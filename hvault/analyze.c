@@ -174,6 +174,32 @@ isCatalogQual (Expr *expr, HvaultTableInfo const *table)
     return !isCatalogQualWalker((Node *) expr, (void *) table);
 }
 
+static bool
+isNotNullQual (Expr *expr, HvaultTableInfo const *table)
+{
+    NullTest * nullexpr;
+    Var * var;
+
+    if (!IsA(expr, NullTest))
+        return false;
+    
+    nullexpr = (NullTest *) expr;
+    if (nullexpr->nulltesttype != IS_NOT_NULL)
+        return false;
+
+    if (!IsA(nullexpr->arg, Var)) 
+        return false;
+
+    var = (Var *) nullexpr->arg;
+    if (var->varno != table->relid)
+        return false;
+
+    if (table->columns[var->varattno-1].type != HvaultColumnDataset)
+        return false;
+
+    return true;
+}
+
 /* Catalog only EC will be put into baserestrictinfo by planner, so here
  * we need to extract only ECs that contain both catalog & outer table vars.
  * We skip patalogic case when one EC contains two different catalog vars
@@ -455,7 +481,10 @@ hvaultAnalyzeQuals (HvaultQualAnalyzer analyzer, List * quals)
     {
         RestrictInfo *rinfo = lfirst(l);
         struct HvaultQualGeomData geom_qual_data;
-        if (isCatalogQual(rinfo->clause, analyzer->table))
+        bool isnotnull;
+
+        isnotnull = isNotNullQual(rinfo->clause, analyzer->table);
+        if (isnotnull || isCatalogQual(rinfo->clause, analyzer->table))
         {
             struct HvaultQualSimpleData * qual_data = NULL;
             
@@ -465,6 +494,7 @@ hvaultAnalyzeQuals (HvaultQualAnalyzer analyzer, List * quals)
             qual_data = palloc(sizeof(struct HvaultQualSimpleData));
             qual_data->qual.type = HvaultQualSimple;
             qual_data->qual.rinfo = rinfo;
+            qual_data->qual.recheck = isnotnull;
 
             res = lappend(res, qual_data);
         } 
@@ -480,6 +510,7 @@ hvaultAnalyzeQuals (HvaultQualAnalyzer analyzer, List * quals)
                    sizeof(struct HvaultQualGeomData));
             qual_data->qual.type = HvaultQualGeom;
             qual_data->qual.rinfo = rinfo;
+            qual_data->qual.recheck = false;
 
             res = lappend(res, qual_data);
         }
