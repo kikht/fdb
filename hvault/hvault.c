@@ -55,12 +55,27 @@ pg_notice(const char *fmt, va_list ap)
     ereport(NOTICE, (errmsg_internal("%s", errmsg)));
 }
 
-void
-_PG_init(void)
+static void 
+init_lwgeom_handlers()
 {
     lwgeom_set_handlers(palloc, repalloc, pfree, pg_error, pg_notice); 
 }
+
+#else
+
+static void 
+init_lwgeom_handlers()
+{
+}
+
 #endif
+
+void
+_PG_init(void)
+{
+    init_lwgeom_handlers();
+    GDALAllRegister();
+}
 
 const int hvaultDatatypeSize[HvaultNumDatatypes] = 
     {1, 1, 2, 2, 4, 4, 8, 8, 4, 8, -1};

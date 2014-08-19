@@ -2,6 +2,7 @@
 #define _COMMON_H_
 
 #include <postgres.h>
+#include <funcapi.h>
 #include <access/htup.h>
 #include <access/skey.h>
 #include <catalog/namespace.h>
@@ -33,6 +34,7 @@
 #include <utils/timestamp.h>
 #include <utils/varbit.h>
 
+#include <gdal/gdal.h>
 #include <liblwgeom.h>
 #include "liblwgeom_version.h"
 

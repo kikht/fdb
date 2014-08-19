@@ -13,3 +13,68 @@ CREATE FOREIGN DATA WRAPPER hvault_fdw
     HANDLER   hvault_fdw_handler;
 
 CREATE SERVER hvault_service FOREIGN DATA WRAPPER hvault_fdw;
+
+DROP TYPE IF EXISTS modis_metadata CASCADE;
+CREATE TYPE modis_metadata AS (
+    footprint text,
+    start     timestamp,
+    stop      timestamp
+);
+
+CREATE OR REPLACE FUNCTION hvault_modis_metadata(file text) 
+    RETURNS modis_metadata AS 
+$$        
+    import gdal
+    gd = gdal.Open(file)
+    if gd == None:
+        return None
+    
+    coord = dict()
+    coord["north"] = float(gd.GetMetadataItem("NORTHBOUNDINGCOORDINATE"))
+    if not coord["north"]:
+        return None
+    coord["south"] = float(gd.GetMetadataItem("SOUTHBOUNDINGCOORDINATE"))
+    if not coord["south"]:
+        return None
+    coord["east"] = float(gd.GetMetadataItem("EASTBOUNDINGCOORDINATE"))
+    if not coord["east"]:
+        return None
+    coord["west"] = float(gd.GetMetadataItem("WESTBOUNDINGCOORDINATE"))
+    if not coord["west"]:
+        return None
+    if coord["east"] < 0:
+        coord["east"] += 360.0
+    if coord["west"] < 0:
+        coord["east"] += 360.0
+
+    startdate = gd.GetMetadataItem("RANGEBEGINNINGDATE")
+    if not startdate:
+        return None
+    starttime = gd.GetMetadataItem("RANGEBEGINNINGTIME")
+    if not starttime:
+        return None
+    stopdate  = gd.GetMetadataItem("RANGEENDINGDATE")
+    if not stopdate:
+        return None
+    stoptime  = gd.GetMetadataItem("RANGEENDINGTIME")
+    if not stoptime:
+        return None
+
+    footprint = "POLYGON(( {west} {north}, {east} {north}, {east} {south}, {west} {south}, {west} {north} ))".format(**coord)
+    start = startdate + " " + starttime
+    stop  = stopdate  + " " + stoptime
+    return (footprint, start, stop)
+$$ LANGUAGE plpythonu STABLE STRICT COST 10000;
+
+DROP TYPE IF EXISTS grid_join_point CASCADE;
+CREATE TYPE grid_join_point AS (
+    i     int8,
+    j     int8,
+    ratio float8
+);
+
+CREATE OR REPLACE FUNCTION hvault_grid_join(
+    geometry, float8, float8, float8 = 0, float8 = 0)
+    RETURNS SETOF grid_join_point
+    AS 'MODULE_PATHNAME','hvault_grid_join'
+    LANGUAGE C IMMUTABLE STRICT;

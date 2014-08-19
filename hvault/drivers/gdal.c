@@ -131,8 +131,6 @@ hvaultGDALInit (List * table_options, MemoryContext memctx)
     MemoryContext oldmemctx, newmemctx;
     DefElem * def;
 
-    GDALAllRegister();
-
     newmemctx = AllocSetContextCreate(memctx, 
                                       "hvault_gdal_driver",
                                       ALLOCSET_DEFAULT_MINSIZE,
