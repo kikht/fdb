@@ -78,3 +78,9 @@ CREATE OR REPLACE FUNCTION hvault_grid_join(
     RETURNS SETOF grid_join_point
     AS 'MODULE_PATHNAME','hvault_grid_join'
     LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION hvault_grid_join_area(
+    geometry, int, int, float8, float8, float8, float8)
+    RETURNS SETOF grid_join_point
+    AS 'MODULE_PATHNAME','hvault_grid_join_area'
+    LANGUAGE C IMMUTABLE STRICT;

@@ -56,44 +56,39 @@ static inline void push_vertex ( POINT2D *res_poly,
 }
 
 static void 
-grid_join ( LWPOLY * polygon, 
-            POINT2D orig,
-            double scale_x, 
-            double scale_y,
-            int *res_size,
-            int64_t **res_indices,
-            double **res_ratio )
+grid_join_internal ( LWPOLY * polygon, 
+                     POINT2D O, 
+                     double scale_x, 
+                     double scale_y, 
+                     int n, 
+                     int m, 
+                     int64_t imin, 
+                     int64_t jmin,
+                     int *res_size,
+                     int64_t **res_indices,
+                     double **res_ratio )
 {
-    int i,j;
-    GBOX const * bbox;
-    int64_t imin,imax,jmin,jmax;
-    POINT2D O;
-    int n, m;
-    int line_idx;
+    int size;
     double *ph, *pv;
     POINT2D *res_poly;
     int *res_poly_size;
-    double cell_area_inv;
+    int line_idx;
+    int i, j;
     double *tmp_ratio;
     int idx;
-    int size;
-
-    Assert( polygon->nrings == 1 );
-    bbox = lwgeom_get_bbox( ( LWGEOM * ) polygon ); 
-    size = polygon->rings[0]->npoints - 1;
-
-    /* Calculate new orig and size of potential intersections */
-    imin = (int64_t) floor( ( bbox->xmin - orig.x ) / scale_x );
-    imax = (int64_t) ceil(  ( bbox->xmax - orig.x ) / scale_x );
-    jmin = (int64_t) floor( ( bbox->ymin - orig.y ) / scale_y );
-    jmax = (int64_t) ceil(  ( bbox->ymax - orig.y ) / scale_y );
+    double cell_area_inv;
     
-    n = imax - imin;
-    m = jmax - jmin;
+    Assert( n > 0 );
+    Assert( m > 0 );
+    Assert( res_size != NULL );
+    Assert( res_indices != NULL );
+    Assert( res_ratio != NULL );
+    Assert( polygon->nrings == 1 );
+    
     cell_area_inv = 1.0 / ( scale_x * scale_y );
-
     /* Fast path for single cell */
-    if( n <= 1 && m <= 1 ){
+    if( n == 1 && m == 1 ){
+
         *res_size = 1;
         *res_indices = lwalloc( sizeof(int) * 2 );
         *res_ratio = lwalloc( sizeof(double) );
@@ -103,18 +98,14 @@ grid_join ( LWPOLY * polygon,
         return;
     }
 
-    O.x = orig.x + imin * scale_x;
-    O.y = orig.y + jmin * scale_y;
-
     ph = lwalloc( sizeof( double ) * ( m + 1 ) );
     pv = lwalloc( sizeof( double ) * ( n + 1 ) );
 
+    size = polygon->rings[0]->npoints - 1;
     res_poly = lwalloc( sizeof( POINT2D ) * m * n * size * 3 );
     res_poly_size = lwalloc( sizeof( POINT2D ) * m * n );
     memset( res_poly_size, 0, sizeof( POINT2D ) * m * n );
 
-#define X(i) O.x + scale_x * i
-#define Y(j) O.y + scale_y * j
     for( line_idx = 0; line_idx < size; line_idx++ ){
         POINT2D * start;
         POINT2D * end;
@@ -294,6 +285,91 @@ grid_join ( LWPOLY * polygon,
     lwfree(tmp_ratio);
 }
 
+static void 
+grid_join ( LWPOLY * polygon, 
+            POINT2D orig,
+            double scale_x, 
+            double scale_y,
+            int *res_size,
+            int64_t **res_indices,
+            double **res_ratio )
+{
+    GBOX const * bbox;
+    int64_t imin,imax,jmin,jmax;
+    POINT2D O;
+    int n, m;
+
+    bbox = lwgeom_get_bbox( ( LWGEOM * ) polygon ); 
+
+    /* Calculate new orig and size of potential intersections */
+    imin = (int64_t) floor( ( bbox->xmin - orig.x ) / scale_x );
+    imax = (int64_t) ceil(  ( bbox->xmax - orig.x ) / scale_x );
+    jmin = (int64_t) floor( ( bbox->ymin - orig.y ) / scale_y );
+    jmax = (int64_t) ceil(  ( bbox->ymax - orig.y ) / scale_y );
+    
+    n = imax - imin;
+    m = jmax - jmin;
+
+    O.x = orig.x + imin * scale_x;
+    O.y = orig.y + jmin * scale_y;
+
+    grid_join_internal( polygon, O, scale_x, scale_y, n, m, imin, jmin, 
+                        res_size, res_indices, res_ratio );
+}
+
+static void 
+grid_join_area ( LWPOLY * polygon,
+                 int width, 
+                 int height,
+                 double xmin,
+                 double ymin,
+                 double xmax,
+                 double ymax,
+                 int *res_size,
+                 int64_t **res_indices,
+                 double **res_ratio )
+{
+    GBOX const * bbox;
+    int64_t imin,imax,jmin,jmax;
+    POINT2D O;
+    int n, m;
+    double scale_x, scale_y;
+
+    scale_x = ( xmax - xmin ) / width;
+    scale_y = ( ymax - ymin ) / height;
+
+    bbox = lwgeom_get_bbox( ( LWGEOM * ) polygon ); 
+    
+    /* Fast path for no intersection */
+    if( bbox->xmin >= xmax || bbox->ymin >= ymax || 
+            bbox->xmax <= xmin || bbox->ymax <= ymin ){
+        *res_size = 0;
+        *res_indices = NULL;
+        *res_ratio = NULL;
+        return;
+    }
+
+    /* Calculate new orig and size of potential intersections */
+    imin = ( bbox->xmin <= xmin ) ? 0 
+        : floor( ( bbox->xmin - xmin ) / scale_x );
+    imax = ( bbox->xmax >= xmax ) ? width 
+        : ceil( ( bbox->xmax - xmin ) / scale_x );
+    
+    jmin = ( bbox->ymin <= ymin ) ? 0 
+        : floor( ( bbox->ymin - ymin ) / scale_y );
+    jmax = ( bbox->ymax >= ymax ) ? height 
+        : ceil( ( bbox->ymax - ymin ) / scale_y );
+
+    n = imax - imin;
+    m = jmax - jmin;
+    
+    O.x = xmin;
+    O.y = ymin;
+
+    grid_join_internal( polygon, O, scale_x, scale_y, n, m, imin, jmin,
+                        res_size, res_indices, res_ratio );
+}
+
 typedef struct {
     int64_t *indices;
     double *ratio;
@@ -304,10 +380,7 @@ Datum
 hvault_grid_join(PG_FUNCTION_ARGS)
 {
     FuncCallContext *funcctx;
-    HvaultGridJoinContext *ctx;
 
-    elog(DEBUG1, "in grid join");
-    
     if (SRF_IS_FIRSTCALL())
     {
         MemoryContext oldmemctx;
@@ -317,6 +390,7 @@ hvault_grid_join(PG_FUNCTION_ARGS)
         LWGEOM *geom;
         LWPOLY *poly;
         int res_size;
+        HvaultGridJoinContext *ctx;
 
         funcctx = SRF_FIRSTCALL_INIT();
         oldmemctx = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
@@ -334,8 +408,6 @@ hvault_grid_join(PG_FUNCTION_ARGS)
         scale_y = PG_GETARG_FLOAT8(2);
         orig.x = PG_GETARG_FLOAT8(3);
         orig.y = PG_GETARG_FLOAT8(4);
-
-        //TODO: validation
 
         geom = lwgeom_from_gserialized(gser);
         if (geom == NULL)
@@ -361,6 +433,7 @@ hvault_grid_join(PG_FUNCTION_ARGS)
     funcctx = SRF_PERCALL_SETUP();
     if (funcctx->call_cntr < funcctx->max_calls)
     {
+        HvaultGridJoinContext *ctx;
         HeapTuple tuple;
         Datum values[3];
         bool isnull[3] = { false, false, false };
@@ -373,7 +446,87 @@ hvault_grid_join(PG_FUNCTION_ARGS)
 
         tuple = heap_form_tuple(funcctx->tuple_desc, values, isnull);
         res = HeapTupleGetDatum(tuple);
+        SRF_RETURN_NEXT(funcctx, res);
+    }
+    else
+    {
+        SRF_RETURN_DONE(funcctx);
+    }
+}
 
+PG_FUNCTION_INFO_V1(hvault_grid_join_area);
+Datum
+hvault_grid_join_area(PG_FUNCTION_ARGS)
+{
+    FuncCallContext *funcctx;
+
+    if (SRF_IS_FIRSTCALL())
+    {
+        MemoryContext oldmemctx;
+        GSERIALIZED * gser;
+        int width, height;
+        double xmin, ymin, xmax, ymax;
+        LWGEOM *geom;
+        LWPOLY *poly;
+        int res_size;
+        HvaultGridJoinContext *ctx;
+
+        funcctx = SRF_FIRSTCALL_INIT();
+        oldmemctx = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+        
+        if (get_call_result_type(fcinfo, NULL, &funcctx->tuple_desc) 
+                != TYPEFUNC_COMPOSITE)
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("function returning record called in context "
+                            "that cannot accept type record")));
+        BlessTupleDesc(funcctx->tuple_desc);
+        
+        gser = (GSERIALIZED *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
+        width = PG_GETARG_INT32(1);
+        height = PG_GETARG_INT32(2);
+        xmin = PG_GETARG_FLOAT8(3);
+        ymin = PG_GETARG_FLOAT8(4);
+        xmax = PG_GETARG_FLOAT8(5);
+        ymax = PG_GETARG_FLOAT8(6);
+
+        geom = lwgeom_from_gserialized(gser);
+        if (geom == NULL)
+        {
+            elog(ERROR, "Can't extract lwgeom from gserialized");
+        }
+
+        poly = lwgeom_as_lwpoly(geom);
+        if (poly == NULL)
+        {
+            elog(ERROR, "Geometry is not polygon");
+        }
+        
+        ctx = palloc(sizeof(HvaultGridJoinContext));
+        grid_join_area(poly, width, height, xmin, ymin, xmax, ymax,
+                       &res_size, &ctx->indices, &ctx->ratio);
+        funcctx->max_calls = res_size;
+        funcctx->user_fctx = ctx;
+        
+        MemoryContextSwitchTo(oldmemctx);
+    }
+
+    funcctx = SRF_PERCALL_SETUP();
+    if (funcctx->call_cntr < funcctx->max_calls)
+    {
+        HvaultGridJoinContext *ctx;
+        HeapTuple tuple;
+        Datum values[3];
+        bool isnull[3] = { false, false, false };
+        Datum res;
+
+        ctx = (HvaultGridJoinContext *) funcctx->user_fctx;
+        values[0] = Int64GetDatum(ctx->indices[2*funcctx->call_cntr]);
+        values[1] = Int64GetDatum(ctx->indices[2*funcctx->call_cntr+1]);
+        values[2] = Float8GetDatum(ctx->ratio[funcctx->call_cntr]);
+
+        tuple = heap_form_tuple(funcctx->tuple_desc, values, isnull);
+        res = HeapTupleGetDatum(tuple);
         SRF_RETURN_NEXT(funcctx, res);
     }
     else
