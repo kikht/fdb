@@ -55,6 +55,15 @@ static inline void push_vertex ( POINT2D *res_poly,
     (*psize)++;
 }
 
+static inline void fswap ( double * a, double * b )
+{
+    if( *a > *b ){
+        double tmp = *a;
+        *a = *b;
+        *b = tmp;
+    }
+}
+
 static void 
 grid_join_internal ( LWPOLY * polygon, 
                      POINT2D O, 
@@ -84,19 +93,6 @@ grid_join_internal ( LWPOLY * polygon,
     Assert( res_indices != NULL );
     Assert( res_ratio != NULL );
     Assert( polygon->nrings == 1 );
-    
-    cell_area_inv = fabs( 1.0 / ( scale_x * scale_y ) );
-    /* Fast path for single cell */
-    if( n == 1 && m == 1 ){
-
-        *res_size = 1;
-        *res_indices = lwalloc( sizeof(int) * 2 );
-        *res_ratio = lwalloc( sizeof(double) );
-        (*res_indices)[0] = imin;
-        (*res_indices)[1] = jmin;
-        **res_ratio = lwgeom_area( ( LWGEOM * ) polygon ) * cell_area_inv;
-        return;
-    }
 
     ph = lwalloc( sizeof( double ) * ( m + 1 ) );
     pv = lwalloc( sizeof( double ) * ( n + 1 ) );
@@ -139,7 +135,6 @@ grid_join_internal ( LWPOLY * polygon,
             }
         }
         
-        /* FIXME: ensure correct access in bounded case */
         if( delta.x == 0 ){
             int line_i = floor( ( start->x - O.x ) / scale_x );
             if( line_i < 0 ){
@@ -235,6 +230,9 @@ grid_join_internal ( LWPOLY * polygon,
                     b = pv[i+bx];
                     c = ph[j+!by];
                     d = ph[j+by];
+
+                    Assert( a < b );
+                    Assert( c < d );
                     
                     if( d < a ) {
                         if( d > 0 && d <= 1 ) 
@@ -275,9 +273,11 @@ grid_join_internal ( LWPOLY * polygon,
                         
                         if( c > 0 && b <= 1 ) {
                             push_vertex( res_poly, res_poly_size, i, j, m, size,
-                                param_point( start, delta, max( 0, b ) ) );
+                                0 <= b ? param_point( start, delta, b ) 
+                                       : *start );
                             push_vertex( res_poly, res_poly_size, i, j, m, size,
-                                param_point( start, delta, min( c, 1 ) ) );
+                                1 >= c ? param_point( start, delta, c )
+                                       : *end );
                         }
                     }
 
@@ -309,6 +309,7 @@ grid_join_internal ( LWPOLY * polygon,
     *res_indices = lwalloc( sizeof(int64_t) * *res_size * 2 );
     *res_ratio = lwalloc( sizeof(double) * *res_size );
     idx = 0;
+    cell_area_inv = fabs( 1.0 / ( scale_x * scale_y ) );
     for( i = 0; i < n; i++ ){
         for( j = 0; j < m; j++ ){
             if( tmp_ratio[i * m + j] != 0 ){
@@ -322,14 +323,6 @@ grid_join_internal ( LWPOLY * polygon,
     lwfree(tmp_ratio);
 }
 
-static inline void fswap ( double * a, double * b )
-{
-    if( *a > *b ){
-        double tmp = *a;
-        *a = *b;
-        *b = tmp;
-    }
-}
 
 static void 
 grid_join ( LWPOLY * polygon, 
@@ -363,6 +356,19 @@ grid_join ( LWPOLY * polygon,
     
     n = imax - imin;
     m = jmax - jmin;
+    
+    /* Fast path for single cell */
+    if( n == 1 && m == 1 ){
+        double cell_area_inv = fabs( 1.0 / ( scale_x * scale_y ) );
+
+        *res_size = 1;
+        *res_indices = lwalloc( sizeof(int) * 2 );
+        *res_ratio = lwalloc( sizeof(double) );
+        (*res_indices)[0] = imin;
+        (*res_indices)[1] = jmin;
+        **res_ratio = lwgeom_area( ( LWGEOM * ) polygon ) * cell_area_inv;
+        return;
+    }
 
     O.x = orig.x + imin * scale_x;
     O.y = orig.y + jmin * scale_y;
@@ -389,6 +395,7 @@ grid_join_area ( LWPOLY * polygon,
     POINT2D O;
     int n, m;
     double scale_x, scale_y;
+    bool overflow = false;
 
     /* 
      * It is possible that xmin > xmax (or ymin > ymax).
@@ -423,13 +430,52 @@ grid_join_area ( LWPOLY * polygon,
     fswap( &fimin, &fimax );
     fswap( &fjmin, &fjmax );
 
-    imin = fimin > 0 ? floor( fimin ) : 0;
-    imax = fimax < width ? ceil( fimax ) : width;
-    jmin = fjmin > 0 ? floor( fjmin ) : 0;
-    jmax = fjmax < height ? ceil( fjmax ) : height;
+    if( fimin < 0 ){
+        overflow = true;
+        imin = 0;
+    } else {
+        imin = floor( fimin );
+    }
+
+    if( fimax > width ){
+        overflow = true;
+        imax = width;
+    } else {
+        imax = ceil( fimax );
+    }
+
+    if( fjmin < 0 ){
+        overflow = true;
+        jmin = 0;
+    } else {
+        jmin = floor( fjmin );
+    }
+
+    if( fjmax > height ){
+        overflow = true;
+        jmax = height;
+    } else {
+        jmax = ceil( fjmax );
+    }
 
     n = imax - imin;
     m = jmax - jmin;
+
+    /* Fast path for single cell */
+    if( !overflow && n == 1 && m == 1 ){
+        double cell_area_inv = fabs( 1.0 / ( scale_x * scale_y ) );
+
+        *res_size = 1;
+        *res_indices = lwalloc( sizeof(int) * 2 );
+        *res_ratio = lwalloc( sizeof(double) );
+        (*res_indices)[0] = imin;
+        (*res_indices)[1] = jmin;
+        **res_ratio = lwgeom_area( ( LWGEOM * ) polygon ) * cell_area_inv;
+        return;
+    }
+
+    O.x = O.x + imin * scale_x;
+    O.y = O.y + jmin * scale_y;
 
     grid_join_internal( polygon, O, scale_x, scale_y, n, m, imin, jmin,
                         res_size, res_indices, res_ratio );
