@@ -85,7 +85,7 @@ grid_join_internal ( LWPOLY * polygon,
     Assert( res_ratio != NULL );
     Assert( polygon->nrings == 1 );
     
-    cell_area_inv = 1.0 / ( scale_x * scale_y );
+    cell_area_inv = fabs( 1.0 / ( scale_x * scale_y ) );
     /* Fast path for single cell */
     if( n == 1 && m == 1 ){
 
@@ -116,8 +116,8 @@ grid_join_internal ( LWPOLY * polygon,
         getPoint2d_p_ro( polygon->rings[0], line_idx+1, &end );
         delta.x = end->x - start->x;
         delta.y = end->y - start->y;
-        bx = end->x > start->x;
-        by = end->y > start->y;
+        bx = ( end->x > start->x ) ^ ( scale_x < 0 );
+        by = ( end->y > start->y ) ^ ( scale_y < 0 );
 
         /* Prepare parameters */
         if( delta.x != 0 ){
@@ -322,6 +322,15 @@ grid_join_internal ( LWPOLY * polygon,
     lwfree(tmp_ratio);
 }
 
+static inline void fswap ( double * a, double * b )
+{
+    if( *a > *b ){
+        double tmp = *a;
+        *a = *b;
+        *b = tmp;
+    }
+}
+
 static void 
 grid_join ( LWPOLY * polygon, 
             POINT2D orig,
@@ -332,17 +341,25 @@ grid_join ( LWPOLY * polygon,
             double **res_ratio )
 {
     GBOX const * bbox;
+    double fimin,fimax,fjmin,fjmax;
     int64_t imin,imax,jmin,jmax;
     POINT2D O;
     int n, m;
 
     bbox = lwgeom_get_bbox( ( LWGEOM * ) polygon ); 
 
-    /* Calculate new orig and size of potential intersections */
-    imin = (int64_t) floor( ( bbox->xmin - orig.x ) / scale_x );
-    imax = (int64_t) ceil(  ( bbox->xmax - orig.x ) / scale_x );
-    jmin = (int64_t) floor( ( bbox->ymin - orig.y ) / scale_y );
-    jmax = (int64_t) ceil(  ( bbox->ymax - orig.y ) / scale_y );
+    fimin = ( bbox->xmin - orig.x ) / scale_x;
+    fimax = ( bbox->xmax - orig.x ) / scale_x;
+    fjmin = ( bbox->ymin - orig.y ) / scale_y;
+    fjmax = ( bbox->ymax - orig.y ) / scale_y;
+
+    fswap( &fimin, &fimax );
+    fswap( &fjmin, &fjmax );
+
+    imin = floor( fimin );
+    imax = ceil ( fimax );
+    jmin = floor( fjmin );
+    jmax = ceil ( fjmax );
     
     n = imax - imin;
     m = jmax - jmin;
@@ -367,16 +384,27 @@ grid_join_area ( LWPOLY * polygon,
                  double **res_ratio )
 {
     GBOX const * bbox;
+    double fimin,fimax,fjmin,fjmax;
     int64_t imin,imax,jmin,jmax;
     POINT2D O;
     int n, m;
     double scale_x, scale_y;
 
+    /* 
+     * It is possible that xmin > xmax (or ymin > ymax).
+     * It means that we want inverted coordinate along corresponding axis.
+     */
+
+    O.x = xmin;
+    O.y = ymin;
+    
     scale_x = ( xmax - xmin ) / width;
     scale_y = ( ymax - ymin ) / height;
 
-    bbox = lwgeom_get_bbox( ( LWGEOM * ) polygon ); 
+    fswap( &xmin, &xmax );
+    fswap( &ymin, &ymax );
     
+    bbox = lwgeom_get_bbox( ( LWGEOM * ) polygon );
     /* Fast path for no intersection */
     if( bbox->xmin >= xmax || bbox->ymin >= ymax || 
             bbox->xmax <= xmin || bbox->ymax <= ymin ){
@@ -386,22 +414,22 @@ grid_join_area ( LWPOLY * polygon,
         return;
     }
 
-    /* Calculate new orig and size of potential intersections */
-    imin = ( bbox->xmin <= xmin ) ? 0 
-        : floor( ( bbox->xmin - xmin ) / scale_x );
-    imax = ( bbox->xmax >= xmax ) ? width 
-        : ceil( ( bbox->xmax - xmin ) / scale_x );
     
-    jmin = ( bbox->ymin <= ymin ) ? 0 
-        : floor( ( bbox->ymin - ymin ) / scale_y );
-    jmax = ( bbox->ymax >= ymax ) ? height 
-        : ceil( ( bbox->ymax - ymin ) / scale_y );
+    fimin = ( bbox->xmin - O.x ) / scale_x;
+    fimax = ( bbox->xmax - O.x ) / scale_x;
+    fjmin = ( bbox->ymin - O.y ) / scale_y;
+    fjmax = ( bbox->ymax - O.y ) / scale_y;
+
+    fswap( &fimin, &fimax );
+    fswap( &fjmin, &fjmax );
+
+    imin = fimin > 0 ? floor( fimin ) : 0;
+    imax = fimax < width ? ceil( fimax ) : width;
+    jmin = fjmin > 0 ? floor( fjmin ) : 0;
+    jmax = fjmax < height ? ceil( fjmax ) : height;
 
     n = imax - imin;
     m = jmax - jmin;
-    
-    O.x = xmin;
-    O.y = ymin;
 
     grid_join_internal( polygon, O, scale_x, scale_y, n, m, imin, jmin,
                         res_size, res_indices, res_ratio );
