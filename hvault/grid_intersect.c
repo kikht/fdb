@@ -139,16 +139,33 @@ grid_join_internal ( LWPOLY * polygon,
             }
         }
         
+        /* FIXME: ensure correct access in bounded case */
         if( delta.x == 0 ){
             int line_i = floor( ( start->x - O.x ) / scale_x );
-            for( j = 0; j < m; j++ ){
+            if( line_i < 0 ){
+                for( i = 0; i < n; i++ ){
+                    for( j = 0; j < m; j++ ){
+                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                            grid_point( O, scale_x, scale_y, i, j + by ) );
+                    }
+                }
+            } else if( line_i >= n ){
+                for( i = 0; i < n; i++ ){
+                    for( j = 0; j < m; j++ ){
+                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                            grid_point( O, scale_x, scale_y, i + 1, j + by ) );
+                    }
+                }
+            } else {
                 for( i = 0; i < line_i; i++ ){
-                    push_vertex( res_poly, res_poly_size, i, j, m, size, 
-                        grid_point( O, scale_x, scale_y, i + 1, j + by ) );
+                    for( j = 0; j < m; j++ ){
+                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                            grid_point( O, scale_x, scale_y, i + 1, j + by ) );
+                    }
                 }
                 
                 i = line_i;
-                if( i < n ){
+                for( j = 0; j < m; j++ ){
                     double b = ph[j+!by];
                     double c = ph[j+by];
                     if( c > 0 && b <= 1 ) {
@@ -160,20 +177,38 @@ grid_join_internal ( LWPOLY * polygon,
                 }
 
                 for( i = line_i + 1; i < n; i++ ){
-                    push_vertex( res_poly, res_poly_size, i, j, m, size, 
-                        grid_point( O, scale_x, scale_y, i, j + by ) );
+                    for( j = 0; j < m; j++ ){
+                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                            grid_point( O, scale_x, scale_y, i, j + by ) );
+                    }
                 }
             }
         } else if( delta.y == 0 ){
             int line_j = floor( ( start->y - O.y ) / scale_y );
-            for( i = 0; i < n; i++ ){
-                for( j = 0; j < line_j; j++ ){
-                    push_vertex( res_poly, res_poly_size, i, j, m, size, 
-                        grid_point( O, scale_x, scale_y, i + bx, j + 1 ) );
+            if( line_j < 0 ){
+                for( i = 0; i < n; i++ ){
+                    for( j = 0; j < m; j++ ){
+                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                            grid_point( O, scale_x, scale_y, i + bx, j ) );
+                    }
                 }
-                
+            } else if( line_j >= m ){
+                for( i = 0; i < n; i++ ){
+                    for( j = 0; j < m; j++ ){
+                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                            grid_point( O, scale_x, scale_y, i + bx, j + 1 ) );
+                    }
+                }
+            } else {
+                for( i = 0; i < n; i++ ){
+                    for( j = 0; j < line_j; j++ ){
+                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                            grid_point( O, scale_x, scale_y, i + bx, j + 1 ) );
+                    }
+                }
+
                 j = line_j;
-                if( j < m ){
+                for( i = 0; i < n; i++ ){
                     double b = pv[i+!bx];
                     double c = pv[i+bx];
                     if( c > 0 && b <= 1 ) {
@@ -184,9 +219,11 @@ grid_join_internal ( LWPOLY * polygon,
                     }
                 }
 
-                for( j = line_j + 1; j < m; j++ ){
-                    push_vertex( res_poly, res_poly_size, i, j, m, size, 
-                        grid_point( O, scale_x, scale_y, i + bx, j ) );
+                for( i = 0; i < n; i++ ){
+                    for( j = line_j + 1; j < m; j++ ){
+                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                            grid_point( O, scale_x, scale_y, i + bx, j ) );
+                    }
                 }
             }
         } else {
