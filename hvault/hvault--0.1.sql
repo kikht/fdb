@@ -17,8 +17,8 @@ CREATE SERVER hvault_service FOREIGN DATA WRAPPER hvault_fdw;
 DROP TYPE IF EXISTS modis_metadata CASCADE;
 CREATE TYPE modis_metadata AS (
     footprint text,
-    start     timestamp,
-    stop      timestamp
+    starttime timestamp,
+    stoptime  timestamp
 );
 
 CREATE OR REPLACE FUNCTION hvault_modis_metadata(file text) 
@@ -68,6 +68,13 @@ $$ LANGUAGE plpythonu STABLE STRICT COST 10000;
 
 DROP TYPE IF EXISTS grid_join_point CASCADE;
 CREATE TYPE grid_join_point AS (
+    i     int4,
+    j     int4,
+    ratio float8
+);
+
+DROP TYPE IF EXISTS grid_join_point_big CASCADE;
+CREATE TYPE grid_join_point_big AS (
     i     int8,
     j     int8,
     ratio float8
@@ -75,7 +82,7 @@ CREATE TYPE grid_join_point AS (
 
 CREATE OR REPLACE FUNCTION hvault_grid_join(
     geometry, float8, float8, float8 = 0, float8 = 0)
-    RETURNS SETOF grid_join_point
+    RETURNS SETOF grid_join_point_big
     AS 'MODULE_PATHNAME','hvault_grid_join'
     LANGUAGE C IMMUTABLE STRICT;
 
@@ -84,3 +91,14 @@ CREATE OR REPLACE FUNCTION hvault_grid_join_area(
     RETURNS SETOF grid_join_point
     AS 'MODULE_PATHNAME','hvault_grid_join_area'
     LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION hvault_table_count_step(
+    int[], int[], int[][]) RETURNS int[]
+    AS 'MODULE_PATHNAME','hvault_table_count_step'
+    LANGUAGE C IMMUTABLE;
+
+CREATE AGGREGATE hvault_table_count( int[], int[][] ) (
+    SFUNC = hvault_table_count_step,
+    STYPE = int[]
+);
+    

@@ -632,8 +632,8 @@ hvault_grid_join_area(PG_FUNCTION_ARGS)
         Datum res;
 
         ctx = (HvaultGridJoinContext *) funcctx->user_fctx;
-        values[0] = Int64GetDatum(ctx->indices[2*funcctx->call_cntr]);
-        values[1] = Int64GetDatum(ctx->indices[2*funcctx->call_cntr+1]);
+        values[0] = Int32GetDatum(ctx->indices[2*funcctx->call_cntr]);
+        values[1] = Int32GetDatum(ctx->indices[2*funcctx->call_cntr+1]);
         values[2] = Float8GetDatum(ctx->ratio[funcctx->call_cntr]);
 
         tuple = heap_form_tuple(funcctx->tuple_desc, values, isnull);

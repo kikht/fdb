@@ -13,8 +13,8 @@ CFLAGS = -std=gnu99 -fPIC -D_POSIX_C_SOURCE -DUSE_ASSERT_CHECKING \
 CFLAGS := $(CFLAGS) -O3 -march=native -UUSE_ASSERT_CHECKING -Wno-extra
 	
 OBJ = analyze.o catalog.o deparse.o driver.o execute.o grid_intersect.o \
-	  hvault.o interpolate.o options.o plan.o predicates.o utils.o \
-      drivers/modis_swath.o drivers/gdal.o 
+      hvault.o interpolate.o options.o plan.o predicates.o table_group.o \
+      utils.o drivers/modis_swath.o drivers/gdal.o 
 
 HEADERS = analyze.h catalog.h common.h deparse.h driver.h interpolate.h \
           options.h predicates.h utils.h uthash.h liblwgeom_version.h
