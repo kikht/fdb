@@ -1,5 +1,5 @@
 CREATE FOREIGN TABLE modis1km (
-    file_id   int4      OPTIONS (type 'catalog', cat_name 'id'),
+    file_id   int4      OPTIONS (type 'catalog', cat_name 'file_id'),
     starttime timestamp OPTIONS (type 'catalog', cat_name 'starttime'),
     stoptime  timestamp OPTIONS (type 'catalog', cat_name 'stoptime'),
 
