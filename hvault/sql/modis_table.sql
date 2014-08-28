@@ -2,6 +2,7 @@ CREATE FOREIGN TABLE modis1km (
     file_id   int4      OPTIONS (type 'catalog', cat_name 'file_id'),
     starttime timestamp OPTIONS (type 'catalog', cat_name 'starttime'),
     stoptime  timestamp OPTIONS (type 'catalog', cat_name 'stoptime'),
+    is_terra  bool      OPTIONS (type 'catalog', cat_name 'is_terra'),
 
     index     int4      OPTIONS (type 'index'),
     line_id   int4      OPTIONS (type 'line_index'),
@@ -170,7 +171,7 @@ CREATE FOREIGN TABLE modis1km (
 -- MOD05 layers
     Water_Vapor_Near_Infrared                     float8  OPTIONS (cat_name 'mod05_l2', dataset 'Water_Vapor_Near_Infrared'),
     Water_Vapor_Correction_Factors                int2    OPTIONS (cat_name 'mod05_l2', dataset 'Water_Vapor_Correction_Factors'),
-    MOD05_Quality_Assurance_Near_Infrared         bit(8)  OPTIONS (cat_name 'mod05_l2', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Near_Infrared')
+    MOD05_Quality_Assurance_Near_Infrared         bit(8)  OPTIONS (cat_name 'mod05_l2', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Near_Infrared'),
 
     -- Water_Vapor_Infrared                          float8  OPTIONS (cat_name 'mod05_l2', factor '5', dataset 'Water_Vapor_Infrared'),
     -- MOD05_Quality_Assurance_Infrared              bit(40) OPTIONS (cat_name 'mod05_l2', factor '5', bitmap_type 'postfix', bitmap_dims '1', dataset 'Quality_Assurance_Infrared'),
@@ -199,6 +200,10 @@ CREATE FOREIGN TABLE modis1km (
     -- Guess_Moisture_Profile (20, 306, 270)
     -- Retrieved_Moisture_Profile (20, 306, 270)
     -- Retrieved_Temperature_Profile (20, 306, 270)
+
+-- MOD14 layers
+	fire_mask  int2    OPTIONS (cat_name 'mod14', dataset 'fire mask'),
+	fire_QA    int4    OPTIONS (cat_name 'mod14', dataset 'algorithm QA')
 
 ) SERVER hvault_service
   OPTIONS (catalog 'catalog',
