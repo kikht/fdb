@@ -464,9 +464,6 @@ hvaultGDALOpen (HvaultFileDriver        * drv,
         Assert(driver->driver.methods == &hvaultGDALMethods);
         hvaultGDALClose(drv);
 
-        /* debug info */
-        MemoryContextStats(TopMemoryContext);
-
         if (list_length(driver->layers) == 0)
         {
             elog(ERROR, 
