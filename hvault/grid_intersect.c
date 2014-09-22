@@ -39,20 +39,47 @@ static inline POINT2D param_point ( POINT2D *start, POINT2D delta, double p )
     return res;
 }
 
-static inline void push_vertex ( POINT2D *res_poly, 
-                                 int *res_poly_size, 
+struct res_poly {
+    POINT2D ** points;
+    int *size;
+    int *limit;
+};
+
+static inline void push_vertex ( struct res_poly *res, 
                                  int i, 
                                  int j,
                                  int m,
-                                 int size,
                                  POINT2D point )
 {
-    int idx = i * m + j;
-    int *psize = res_poly_size + idx;
-    POINT2D *poly = res_poly + idx * size * 3 + *psize;
-    poly->x = point.x;
-    poly->y = point.y;
-    (*psize)++;
+    POINT2D * poly;
+    int idx, cur_size;
+
+    idx = i * m + j;
+    poly = res->points[idx];
+    cur_size = res->size[idx];
+
+    /* Fast path for repeating point */
+    if( cur_size > 0 ){
+        POINT2D last = poly[cur_size-1];
+        if( last.x == point.x && last.y == point.y )
+            return;
+    }
+
+    if( cur_size == res->limit[idx] ){ /* need more space */
+        if( res->limit[idx] == 0 ){
+            res->limit[idx] = 8;
+            res->points[idx] = palloc( res->limit[idx] * sizeof(POINT2D) );
+        } else {
+            res->limit[idx] *= 2;
+            res->points[idx] = repalloc( poly, 
+                                         res->limit[idx] * sizeof(POINT2D) );
+        }
+        poly = res->points[idx];
+    }
+
+    poly[cur_size].x = point.x;
+    poly[cur_size].y = point.y;
+    res->size[idx]++;
 }
 
 static inline void fswap ( double * a, double * b )
@@ -79,8 +106,7 @@ grid_join_internal ( LWPOLY * polygon,
 {
     int size;
     double *ph, *pv;
-    POINT2D *res_poly;
-    int *res_poly_size;
+    struct res_poly res;
     int line_idx;
     int i, j;
     double *tmp_ratio;
@@ -94,13 +120,13 @@ grid_join_internal ( LWPOLY * polygon,
     Assert( res_ratio != NULL );
     Assert( polygon->nrings == 1 );
 
-    ph = lwalloc( sizeof( double ) * ( m + 1 ) );
-    pv = lwalloc( sizeof( double ) * ( n + 1 ) );
+    ph = palloc( sizeof( double ) * ( m + 1 ) );
+    pv = palloc( sizeof( double ) * ( n + 1 ) );
 
     size = polygon->rings[0]->npoints - 1;
-    res_poly = lwalloc( sizeof( POINT2D ) * m * n * size * 3 );
-    res_poly_size = lwalloc( sizeof( POINT2D ) * m * n );
-    memset( res_poly_size, 0, sizeof( POINT2D ) * m * n );
+    res.points = palloc0( sizeof( POINT2D * ) * m * n );
+    res.size = palloc0( sizeof( POINT2D ) * m * n );
+    res.limit = palloc0( sizeof( POINT2D ) * m * n );
 
     for( line_idx = 0; line_idx < size; line_idx++ ){
         POINT2D * start;
@@ -140,21 +166,21 @@ grid_join_internal ( LWPOLY * polygon,
             if( line_i < 0 ){
                 for( i = 0; i < n; i++ ){
                     for( j = 0; j < m; j++ ){
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             grid_point( O, scale_x, scale_y, i, j + by ) );
                     }
                 }
             } else if( line_i >= n ){
                 for( i = 0; i < n; i++ ){
                     for( j = 0; j < m; j++ ){
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             grid_point( O, scale_x, scale_y, i + 1, j + by ) );
                     }
                 }
             } else {
                 for( i = 0; i < line_i; i++ ){
                     for( j = 0; j < m; j++ ){
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             grid_point( O, scale_x, scale_y, i + 1, j + by ) );
                     }
                 }
@@ -164,16 +190,16 @@ grid_join_internal ( LWPOLY * polygon,
                     double b = ph[j+!by];
                     double c = ph[j+by];
                     if( c > 0 && b <= 1 ) {
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             param_point( start, delta, max( 0, b ) ) );
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             param_point( start, delta, min( c, 1 ) ) );
                     }
                 }
 
                 for( i = line_i + 1; i < n; i++ ){
                     for( j = 0; j < m; j++ ){
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             grid_point( O, scale_x, scale_y, i, j + by ) );
                     }
                 }
@@ -183,21 +209,21 @@ grid_join_internal ( LWPOLY * polygon,
             if( line_j < 0 ){
                 for( i = 0; i < n; i++ ){
                     for( j = 0; j < m; j++ ){
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             grid_point( O, scale_x, scale_y, i + bx, j ) );
                     }
                 }
             } else if( line_j >= m ){
                 for( i = 0; i < n; i++ ){
                     for( j = 0; j < m; j++ ){
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             grid_point( O, scale_x, scale_y, i + bx, j + 1 ) );
                     }
                 }
             } else {
                 for( i = 0; i < n; i++ ){
                     for( j = 0; j < line_j; j++ ){
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             grid_point( O, scale_x, scale_y, i + bx, j + 1 ) );
                     }
                 }
@@ -207,16 +233,16 @@ grid_join_internal ( LWPOLY * polygon,
                     double b = pv[i+!bx];
                     double c = pv[i+bx];
                     if( c > 0 && b <= 1 ) {
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             param_point( start, delta, max( 0, b ) ) );
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             param_point( start, delta, min( c, 1 ) ) );
                     }
                 }
 
                 for( i = 0; i < n; i++ ){
                     for( j = line_j + 1; j < m; j++ ){
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             grid_point( O, scale_x, scale_y, i + bx, j ) );
                     }
                 }
@@ -236,14 +262,14 @@ grid_join_internal ( LWPOLY * polygon,
                     
                     if( d < a ) {
                         if( d > 0 && d <= 1 ) 
-                            push_vertex( res_poly, res_poly_size, i, j, m, size,
+                            push_vertex( &res, i, j, m,
                                 grid_point( O, scale_x, scale_y, i+!bx, j+by ) );
 
                         d = b;
 
                     } else if ( b < c ) {
                         if( b > 0 && b <= 1 )
-                            push_vertex( res_poly, res_poly_size, i, j, m, size,
+                            push_vertex( &res, i, j, m,
                                 grid_point( O, scale_x, scale_y, i+bx, j+!by ) );
 
                     } else {
@@ -272,42 +298,44 @@ grid_join_internal ( LWPOLY * polygon,
                         Assert(c <= d);
                         
                         if( c > 0 && b <= 1 ) {
-                            push_vertex( res_poly, res_poly_size, i, j, m, size,
+                            push_vertex( &res, i, j, m,
                                 0 <= b ? param_point( start, delta, b ) 
                                        : *start );
-                            push_vertex( res_poly, res_poly_size, i, j, m, size,
+                            push_vertex( &res, i, j, m,
                                 1 >= c ? param_point( start, delta, c )
                                        : *end );
                         }
                     }
 
                     if( d > 0 && d <= 1 ) 
-                        push_vertex( res_poly, res_poly_size, i, j, m, size, 
+                        push_vertex( &res, i, j, m, 
                             grid_point( O, scale_x, scale_y, i + bx, j + by ) );
                 }
             }
         }
     }
 
-    lwfree(ph);
-    lwfree(pv);
+    pfree(ph);
+    pfree(pv);
 
-    tmp_ratio = lwalloc( sizeof(double) * n * m );
+    tmp_ratio = palloc( sizeof(double) * n * m );
     *res_size = 0;
     for( i = 0; i < n * m; i++ ){
-        POINT2D * poly = res_poly + i * size * 3;
-        tmp_ratio[i] = polygon_area( poly, res_poly_size[i] );
+        POINT2D * poly = res.points[i];
+        tmp_ratio[i] = polygon_area( poly, res.size[i] );
 
         if( tmp_ratio[i] != 0 ){
             (*res_size)++;
         }
+        pfree(poly);
     }
 
-    lwfree(res_poly);
-    lwfree(res_poly_size);
+    pfree(res.points);
+    pfree(res.size);
+    pfree(res.limit);
 
-    *res_indices = lwalloc( sizeof(int64_t) * *res_size * 2 );
-    *res_ratio = lwalloc( sizeof(double) * *res_size );
+    *res_indices = palloc( sizeof(int64_t) * *res_size * 2 );
+    *res_ratio = palloc( sizeof(double) * *res_size );
     idx = 0;
     cell_area_inv = fabs( 1.0 / ( scale_x * scale_y ) );
     for( i = 0; i < n; i++ ){
@@ -320,7 +348,7 @@ grid_join_internal ( LWPOLY * polygon,
             }
         }
     }
-    lwfree(tmp_ratio);
+    pfree(tmp_ratio);
 }
 
 
@@ -362,8 +390,8 @@ grid_join ( LWPOLY * polygon,
         double cell_area_inv = fabs( 1.0 / ( scale_x * scale_y ) );
 
         *res_size = 1;
-        *res_indices = lwalloc( sizeof(int) * 2 );
-        *res_ratio = lwalloc( sizeof(double) );
+        *res_indices = palloc( sizeof(int) * 2 );
+        *res_ratio = palloc( sizeof(double) );
         (*res_indices)[0] = imin;
         (*res_indices)[1] = jmin;
         **res_ratio = lwgeom_area( ( LWGEOM * ) polygon ) * cell_area_inv;
@@ -466,8 +494,8 @@ grid_join_area ( LWPOLY * polygon,
         double cell_area_inv = fabs( 1.0 / ( scale_x * scale_y ) );
 
         *res_size = 1;
-        *res_indices = lwalloc( sizeof(int) * 2 );
-        *res_ratio = lwalloc( sizeof(double) );
+        *res_indices = palloc( sizeof(int) * 2 );
+        *res_ratio = palloc( sizeof(double) );
         (*res_indices)[0] = imin;
         (*res_indices)[1] = jmin;
         **res_ratio = lwgeom_area( ( LWGEOM * ) polygon ) * cell_area_inv;
@@ -524,6 +552,12 @@ hvault_grid_join(PG_FUNCTION_ARGS)
         if (geom == NULL)
         {
             elog(ERROR, "Can't extract lwgeom from gserialized");
+        }
+
+        if (lwgeom_is_empty(geom))
+        {
+            MemoryContextSwitchTo(oldmemctx);
+            SRF_RETURN_DONE(funcctx);
         }
 
         poly = lwgeom_as_lwpoly(geom);
@@ -605,6 +639,12 @@ hvault_grid_join_area(PG_FUNCTION_ARGS)
         if (geom == NULL)
         {
             elog(ERROR, "Can't extract lwgeom from gserialized");
+        }
+        
+        if (lwgeom_is_empty(geom))
+        {
+            MemoryContextSwitchTo(oldmemctx);
+            SRF_RETURN_DONE(funcctx);
         }
 
         poly = lwgeom_as_lwpoly(geom);
