@@ -568,10 +568,10 @@ hvaultGDALOpen (HvaultFileDriver        * drv,
                                                            driver->dstspref);
                         if (driver->transform != NULL)
                         {
-                            driver->aft[1] /= (double) layer->layer.vfactor;
-                            driver->aft[4] /= (double) layer->layer.vfactor;
-                            driver->aft[2] /= (double) layer->layer.hfactor;
-                            driver->aft[5] /= (double) layer->layer.hfactor;
+                            driver->aft[1] /= (double) layer->layer.hfactor;
+                            driver->aft[4] /= (double) layer->layer.hfactor;
+                            driver->aft[2] /= (double) layer->layer.vfactor;
+                            driver->aft[5] /= (double) layer->layer.vfactor;
                         }
                         else
                         {
@@ -894,9 +894,9 @@ getGeolocation (HvaultGDALDriver * driver,
             for (j = 0; j <= driver->num_samples; j++)
             {
                 driver->lon_temp[i * (driver->num_samples + 1) + j] = 
-                    driver->aft[0] + driver->aft[1] * i + driver->aft[2] * j;
+                    driver->aft[0] + driver->aft[1] * j + driver->aft[2] * i;
                 driver->lat_temp[i * (driver->num_samples + 1) + j] = 
-                    driver->aft[3] + driver->aft[4] * i + driver->aft[5] * j;
+                    driver->aft[3] + driver->aft[4] * j + driver->aft[5] * i;
             }
         }
         num_points = (driver->num_lines + 1) * (driver->num_samples + 1);
@@ -914,11 +914,11 @@ getGeolocation (HvaultGDALDriver * driver,
             for (j = 0; j < driver->num_samples; j++)
             {
                 driver->lon_temp[i * driver->num_samples + j] = 
-                    driver->aft[0] + driver->aft[1] * (0.5 + i) 
-                                   + driver->aft[2] * (0.5 + j);
+                    driver->aft[0] + driver->aft[1] * (0.5 + j) 
+                                   + driver->aft[2] * (0.5 + i);
                 driver->lat_temp[i * driver->num_samples + j] = 
-                    driver->aft[3] + driver->aft[4] * (0.5 + i) 
-                                   + driver->aft[5] * (0.5 + j);
+                    driver->aft[3] + driver->aft[4] * (0.5 + j) 
+                                   + driver->aft[5] * (0.5 + i);
             }
         }
         num_points = driver->num_lines * driver->num_samples;
