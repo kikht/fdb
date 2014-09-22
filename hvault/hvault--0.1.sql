@@ -16,9 +16,10 @@ CREATE SERVER hvault_service FOREIGN DATA WRAPPER hvault_fdw;
 
 DROP TYPE IF EXISTS modis_metadata CASCADE;
 CREATE TYPE modis_metadata AS (
-    footprint text,
-    starttime timestamp,
-    stoptime  timestamp
+    footprint       text,
+    gring_footprint text,
+    starttime       timestamp,
+    stoptime        timestamp
 );
 
 CREATE OR REPLACE FUNCTION hvault_modis_metadata(file text) 
@@ -31,39 +32,43 @@ $$
     
     coord = dict()
     coord["north"] = float(gd.GetMetadataItem("NORTHBOUNDINGCOORDINATE"))
-    if not coord["north"]:
-        return None
     coord["south"] = float(gd.GetMetadataItem("SOUTHBOUNDINGCOORDINATE"))
-    if not coord["south"]:
-        return None
     coord["east"] = float(gd.GetMetadataItem("EASTBOUNDINGCOORDINATE"))
-    if not coord["east"]:
-        return None
     coord["west"] = float(gd.GetMetadataItem("WESTBOUNDINGCOORDINATE"))
-    if not coord["west"]:
+
+    if not coord["north"] or not coord["south"] or \
+            not coord["east"] or not coord["west"]:
+        plpy.notice("Problem with coordinates: " + coord + " in " + file)
         return None
+
     if coord["east"] < 0:
         coord["east"] += 360.0
     if coord["west"] < 0:
         coord["east"] += 360.0
 
     startdate = gd.GetMetadataItem("RANGEBEGINNINGDATE")
-    if not startdate:
-        return None
     starttime = gd.GetMetadataItem("RANGEBEGINNINGTIME")
-    if not starttime:
-        return None
     stopdate  = gd.GetMetadataItem("RANGEENDINGDATE")
-    if not stopdate:
-        return None
     stoptime  = gd.GetMetadataItem("RANGEENDINGTIME")
-    if not stoptime:
+    if not startdate or not starttime or not stopdate or not stoptime:
+        plpy.notice("Problem with time in " + file)
         return None
 
+    gring_seq = gd.GetMetadataItem("GRINGPOINTSEQUENCENO")
+    gring_lon = gd.GetMetadataItem("GRINGPOINTLONGITUDE")
+    gring_lat = gd.GetMetadataItem("GRINGPOINTLATITUDE")
+    if gring_seq != "1, 2, 3, 4" or not gring_lon or not gring_lat:
+        plpy.notice("GRINGSEQUENCENO is " + str(gring_seq) + " in " + file)
+        return None
+
+    gring_lon = gring_lon.split(", ")
+    gring_lat = gring_lat.split(", ")
+
+    gring_footprint = "POLYGON(( {0} {4}, {1} {5}, {2} {6}, {3} {7}, {0} {4} ))".format(*(gring_lon + gring_lat))
     footprint = "POLYGON(( {west} {north}, {east} {north}, {east} {south}, {west} {south}, {west} {north} ))".format(**coord)
     start = startdate + " " + starttime
     stop  = stopdate  + " " + stoptime
-    return (footprint, start, stop)
+    return (footprint, gring_footprint, start, stop)
 $$ LANGUAGE plpythonu STABLE STRICT COST 10000;
 
 DROP TYPE IF EXISTS grid_join_point CASCADE;
