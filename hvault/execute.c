@@ -403,7 +403,9 @@ static inline void
 fillOneColumn (ExecState * state, HvaultFileLayer const * layer, size_t idx)
 {
     if (layer->fill_val != NULL && 
-        !memcmp(layer->data, layer->fill_val, layer->item_size))
+        !memcmp(((char *) layer->data) + idx * layer->item_size, 
+                layer->fill_val, 
+                layer->item_size))
     {
         state->nulls[layer->colnum] = true;
         return;
