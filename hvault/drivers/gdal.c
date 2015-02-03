@@ -12,6 +12,7 @@
 #define DEFAULT_GEOCACHE_SIZE 10
 
 const HvaultFileDriverMethods hvaultGDALMethods;
+bool hvaultGDALDestructorRegistered = false;
 
 typedef struct 
 {
@@ -504,6 +505,16 @@ hvaultGDALOpen (HvaultFileDriver        * drv,
                 elog(WARNING, "Can't open dataset %s, skipping", 
                      layer->dataset_name);
                 continue;
+            }
+
+            if (!hvaultGDALDestructorRegistered) {
+                char const * driver_name = 
+                    GDALGetDriverShortName(
+                        GDALGetDatasetDriver(layer->dataset));
+                if (strcmp(driver_name, "HDF4") == 0) {
+                    atexit(GDALDestroyDriverManager);
+                    hvaultGDALDestructorRegistered = true;
+                }
             }
 
             layer->num_lines = GDALGetRasterXSize(layer->dataset);
