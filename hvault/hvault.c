@@ -1,5 +1,9 @@
 #include "common.h"
 
+#define int8 hdf_int8
+#include <hdf/mfhdf.h>
+#undef int8
+
 extern void             hvaultGetRelSize (PlannerInfo * root, 
                                           RelOptInfo *  baserel, 
                                           Oid           foreigntableid);
@@ -74,6 +78,7 @@ void
 _PG_init(void)
 {
     init_lwgeom_handlers();
+    HDdont_atexit();
     GDALAllRegister();
 }
 

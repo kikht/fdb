@@ -1,4 +1,4 @@
-PG_CONFIG=pg_config
+PG_CONFIG=/usr/pgsql-9.3/bin/pg_config
 PG_PKGLIBDIR=$(shell $(PG_CONFIG) --pkglibdir)
 PG_EXTDIR=$(shell $(PG_CONFIG) --sharedir)/extension
 
