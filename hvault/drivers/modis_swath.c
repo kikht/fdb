@@ -938,6 +938,17 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
         /* Calc point geolocation */
         if (driver->flags & FLAG_HAS_POINT)
         {
+            if (driver->lat_point_data != NULL)
+            {
+                memset(driver->lat_point_data, 0, sizeof(float) * 
+                       driver->num_samples * driver->scanline_size);
+            }
+            if (driver->lon_point_data != NULL)
+            {
+                memset(driver->lon_point_data, 0, sizeof(float) * 
+                       driver->num_samples * driver->scanline_size);
+            }
+
             switch (geo_factor)
             {
                 case 1:
@@ -982,6 +993,18 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
         /* Calc footprint geolocation */
         if (driver->flags & FLAG_HAS_FOOTPRINT)
         {
+            if (driver->lat_data != NULL) 
+            {
+                memset(driver->lat_data, 0, sizeof(float) * 
+                       (driver->num_samples + 1) * (driver->scanline_size + 1));
+            }
+            if (driver->lon_data != NULL) 
+            {
+                memset(driver->lon_data, 0, sizeof(float) * 
+                       (driver->num_samples + 1) * (driver->scanline_size + 1));
+            }
+
+
             switch (geo_factor)
             {
                 case 1:
