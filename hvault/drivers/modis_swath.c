@@ -124,8 +124,8 @@ hvaultModisSwathInit (List * table_options, MemoryContext memctx)
         driver->flags |= FLAG_SHIFT_LONGITUDE;
 
     def = defFindByName(table_options, HVAULT_TABLE_OPTION_SCANLINE);
-    driver->scanline_size = def != NULL ? defGetInt64(def) 
-                                        : DEFAULT_SCANLINE_SIZE;
+    driver->scanline_size = def != NULL ? defGetInt(def) : 0;
+                                        
 
     driver->driver.methods = &hvaultModisSwathMethods;
     driver->driver.geotype = HvaultGeolocationCompact;
@@ -179,9 +179,16 @@ addGeolocationColumns (HvaultModisSwathDriver * driver, List * options)
     }
 
     factor_option = defFindByName(options, HVAULT_COLUMN_OPTION_FACTOR);
-    if (factor_option != NULL)
+    factor = factor_option != NULL ? defGetInt(factor_option) : 1;
+    if (driver->scanline_size == 0) 
     {
-        factor = defGetInt(factor_option);
+        driver->scanline_size = DEFAULT_SCANLINE_SIZE * factor;
+    } else {
+        if (driver->scanline_size % factor != 0)
+        {
+            elog(ERROR, "geolocation factor must be scanline divisor");
+            return; /* Will never reach here */
+        }
     }
 
     driver->lat_layer = makeLayer();
@@ -296,6 +303,14 @@ addRegularColumn (HvaultModisSwathDriver * driver,
 
     layer->layer.type = layer->layer.hfactor == 1 && layer->layer.vfactor == 1 ?
                         HvaultLayerSimple : HvaultLayerChunked;
+
+    if (driver->scanline_size != 0 && (
+            driver->scanline_size % layer->layer.vfactor != 0 ||
+            driver->scanline_size % layer->layer.hfactor != 0 )) 
+    {
+        elog(ERROR, "Factor must be scanline size divisor");
+        return; /* will never reach here */
+    }
 
     prefix = defFindStringByName(options, HVAULT_COLUMN_OPTION_PREFIX);
     if (prefix != NULL)
@@ -542,6 +557,9 @@ hvaultModisSwathOpen (HvaultFileDriver        * drv,
             }
         }
     }
+
+    if (driver->scanline_size == 0)
+        driver->scanline_size = DEFAULT_SCANLINE_SIZE;
 
     //TODO: add support for sparse datasets
     foreach(l, driver->layers)
