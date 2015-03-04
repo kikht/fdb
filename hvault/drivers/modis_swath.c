@@ -988,6 +988,7 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
                     hvaultInterpolatePoints4x(driver->lon_layer->layer.data, 
                                               driver->lon_point_data, 
                                               geo_lines, geo_samples);
+                    break;
                 default:
                 {
                     /* TODO: move kernel generation to initialization stage */
@@ -1048,13 +1049,14 @@ hvaultModisSwathRead (HvaultFileDriver * drv,
                     hvaultInterpolateFootprint4x(driver->lon_layer->layer.data, 
                                                  driver->lon_data, 
                                                  geo_lines, geo_samples);
+                    break;
                 default:
                 {
                     /* TODO: move kernel generation to initialization stage */
                     float * kernel = palloc(sizeof(float) * 4 * 
                                             (2 * geo_factor + 1) * 
                                             (2 * geo_factor + 1));
-                    hvaultInterpolatePointKernel(geo_factor, kernel);
+                    hvaultInterpolateFootprintKernel(geo_factor, kernel);
                     hvaultInterpolateFootprint(driver->lat_layer->layer.data, 
                                                driver->lat_data, 
                                                geo_lines, geo_samples, 
