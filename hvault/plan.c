@@ -27,7 +27,6 @@ typedef struct
     HvaultTableInfo table;
     
     HvaultQualAnalyzer analyzer;
-    List *sort_list;
     List *static_quals;
     List *join_quals;
     List *ec_quals;
@@ -55,125 +54,6 @@ typedef struct
     List *predicates;
 } HvaultPathData;
 
-static Var *
-getECVar (EquivalenceClass * ec, Index relid)
-{
-    ListCell *m;
-    foreach(m, ec->ec_members)
-    {
-        EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
-        Var *var;
-
-        if (!IsA(em->em_expr, Var))
-            continue;
-       
-        var = (Var *) em->em_expr;
-        if (var->varno != relid)
-            continue;
-
-        return var;
-    }
-    return NULL;
-}
-
-static void   
-getSortPathKeys (HvaultPlannerContext * ctx)
-{
-    ListCell *l, *m, *k;
-    PathKey *line_pk = NULL, *sample_pk = NULL, *index_pk = NULL;
-    List *tails = NIL;
-    List *catalog_pk = NIL;
-
-    foreach(l, ctx->root->canon_pathkeys)
-    {
-        PathKey * pk = lfirst(l);
-        EquivalenceClass *ec = pk->pk_eclass;
-        Var * var;
-
-        if (!bms_is_member(ctx->baserel->relid, ec->ec_relids))
-            continue;
-
-        var = getECVar(ec, ctx->baserel->relid);
-        if (var == NULL)
-            continue;
-        
-        Assert(var->varattno <= table(ctx)->natts);
-        switch (table(ctx)->columns[var->varattno-1].type)
-        {
-            case HvaultColumnIndex:
-                if (pk->pk_strategy == BTLessStrategyNumber)
-                {
-                    if (index_pk)
-                        elog(ERROR, "Duplicate index column");
-                    index_pk = pk;
-                }
-                break;
-            case HvaultColumnLineIdx:
-                if (pk->pk_strategy == BTLessStrategyNumber)
-                {
-                    if (line_pk)
-                        elog(ERROR, "Duplicate index column");
-                    line_pk = pk;
-                }
-                break;
-            case HvaultColumnSampleIdx:
-                if (pk->pk_strategy == BTLessStrategyNumber)
-                {
-                    if (sample_pk)
-                        elog(ERROR, "Duplicate index column");
-                    sample_pk = pk;
-                }
-                break;
-            case HvaultColumnCatalog:
-                catalog_pk = lappend(catalog_pk, pk);
-                break;
-            default:
-                /*nop*/
-                break;
-        }
-    }
-
-    if (index_pk)
-        tails = lappend(tails, list_make1(index_pk));
-
-    if (line_pk)
-    {
-        if (sample_pk)
-            tails = lappend(tails, list_make2(line_pk, sample_pk));
-        else
-            tails = lappend(tails, list_make1(line_pk));
-    }
-
-    if (list_length(tails) == 0)
-        tails = list_make1(NIL);
-
-
-    foreach(l, tails)
-    {
-        List * tail = (List *) lfirst(l);
-        foreach(m, catalog_pk)
-        {
-            PathKey * pk1 = (PathKey *) lfirst(m);
-            List * pathkeys;
-
-            pathkeys = list_make1(pk1);
-            pathkeys = list_concat(pathkeys, tail);
-            ctx->sort_list = lappend(ctx->sort_list, pathkeys);
-
-            foreach(k, catalog_pk)
-            {
-                PathKey *pk2 = (PathKey *) lfirst(k);
-                if (pk1 == pk2)
-                    continue;
-
-                pathkeys = list_make2(pk1, pk2);
-                pathkeys = list_concat(pathkeys, tail);
-                ctx->sort_list = lappend(ctx->sort_list, pathkeys);
-            }
-        }
-    }
-}
-
 static void
 extractCatalogQuals (HvaultPlannerContext * ctx)
 {
@@ -194,6 +74,12 @@ addForeignPaths (HvaultPlannerContext * ctx,
     List *predicates, *own_quals, *pred_quals;
     HvaultCatalogQuery query;
     List * fdw_expr;
+    Cost catmin, catmax;
+    double catrows;
+    int catwidth;
+    double rows;
+    Cost startup_cost, total_cost, file_cost, pixel_cost;
+    Selectivity selectivity;
     
     /* Prepare catalog query */
     own_quals = NIL;
@@ -222,68 +108,40 @@ addForeignPaths (HvaultPlannerContext * ctx,
         }
     }
 
-    foreach(l, ctx->sort_list)
+    hvaultCatalogGetCosts(query, &catmin, &catmax, &catrows, &catwidth);
+    selectivity = clauselist_selectivity(ctx->root, pred_quals, 
+                                         ctx->baserel->relid, 
+                                         JOIN_INNER, NULL);
+    
+    file_cost = ctx->file_read_cost + 
+        (predicates != NIL ? ctx->predicate_cost : 0) * ctx->rows_per_file;
+    pixel_cost = ctx->byte_cost * ctx->tuple_width;
+
+    rows = ctx->rows_per_file * catrows * selectivity;
+    startup_cost = ctx->startup_cost + catmin + file_cost + pixel_cost;
+    total_cost = ctx->startup_cost + catmax + catrows * file_cost 
+        + rows * pixel_cost;
+
+    if (add_path_precheck(ctx->baserel, startup_cost, total_cost, 
+                          NIL, req_outer))
     {
-        List * pathkeys = (List *) lfirst(l);
-        ListCell *m;
-        Cost catmin, catmax;
-        double catrows;
-        int catwidth;
-        double rows;
-        Cost startup_cost, total_cost, file_cost, pixel_cost;
-        Selectivity selectivity;
+        ForeignPath *path;
+        HvaultPathData *path_data;
 
-        hvaultCatalogResetSort(query);
-        foreach(m, pathkeys)
-        {
-            PathKey *pk = (PathKey *) lfirst(m);
-            Var *var = getECVar(pk->pk_eclass, ctx->baserel->relid);
-            HvaultColumnInfo * colinfo;
+        path_data = palloc(sizeof(HvaultPathData));    
+        path_data->table = table(ctx);
+        path_data->own_quals = own_quals;
+        path_data->packed_query = hvaultCatalogPackQuery(query);
+        path_data->fdw_expr = fdw_expr;
+        path_data->predicates = predicates;
 
-            Assert(var != NULL);
-            colinfo = &(table(ctx)->columns[var->varattno-1]);
-            
-            if (colinfo->type != HvaultColumnCatalog)
-                break;
-
-            hvaultCatalogAddSort(query, colinfo->cat_name, 
-                                 pk->pk_strategy == BTGreaterStrategyNumber);
-        }
-
-        hvaultCatalogGetCosts(query, &catmin, &catmax, &catrows, &catwidth);
-        selectivity = clauselist_selectivity(ctx->root, pred_quals, 
-                                             ctx->baserel->relid, 
-                                             JOIN_INNER, NULL);
-        
-        file_cost = ctx->file_read_cost + 
-            (predicates != NIL ? ctx->predicate_cost : 0) * ctx->rows_per_file;
-        pixel_cost = ctx->byte_cost * ctx->tuple_width;
-
-        rows = ctx->rows_per_file * catrows * selectivity;
-        startup_cost = ctx->startup_cost + catmin + file_cost + pixel_cost;
-        total_cost = ctx->startup_cost + catmax + catrows * file_cost 
-            + rows * pixel_cost;
-
-        if (add_path_precheck(ctx->baserel, startup_cost, total_cost, 
-                              pathkeys, req_outer))
-        {
-            ForeignPath *path;
-            HvaultPathData *path_data;
-
-            path_data = palloc(sizeof(HvaultPathData));    
-            path_data->table = table(ctx);
-            path_data->own_quals = own_quals;
-            path_data->packed_query = hvaultCatalogPackQuery(query);
-            path_data->fdw_expr = fdw_expr;
-            path_data->predicates = predicates;
-
-            path = create_foreignscan_path(ctx->root, ctx->baserel, rows, 
-                                           startup_cost, total_cost, 
-                                           pathkeys, req_outer, 
-                                           (List *) path_data);
-            add_path(ctx->baserel, (Path *) path);
-        }
+        path = create_foreignscan_path(ctx->root, ctx->baserel, rows, 
+                                       startup_cost, total_cost, 
+                                       NIL, req_outer, 
+                                       (List *) path_data);
+        add_path(ctx->baserel, (Path *) path);
     }
+
     hvaultCatalogFreeQuery(query);
 }
 
@@ -472,19 +330,11 @@ hvaultGetPaths (PlannerInfo *root,
     Assert(ctx->baserel == baserel);
     Assert(ctx->foreigntableid == foreigntableid);
 
-    ctx->sort_list = NIL;
     ctx->static_quals = NIL;
     ctx->join_quals = NIL;
     ctx->ec_quals = NIL;
     ctx->considered_relids = NIL;
     ctx->analyzer = hvaultAnalyzerInit(table(ctx));
-
-    /* Process pathkeys */
-    if (has_useful_pathkeys(root, baserel))
-    {
-        getSortPathKeys(ctx);
-    }
-    ctx->sort_list = lappend(ctx->sort_list, NIL);
 
     extractCatalogQuals(ctx);
     /* Create simple unparametrized path */
