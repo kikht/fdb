@@ -43,8 +43,11 @@ void hvaultCatalogAddColumn (HvaultCatalogQuery query, char const * name);
 void hvaultCatalogAddQual (HvaultCatalogQuery query,
                            HvaultQual *       qual);
 
+/* Reset sort quals in query */
+void hvaultCatalogResetSort (HvaultCatalogQuery query);
+
 /* Add sort qual to query */
-void hvaultCatalogSetSort (HvaultCatalogQuery query, 
+void hvaultCatalogAddSort (HvaultCatalogQuery query, 
                            char const *       qual,
                            bool               desc);
 

@@ -9,8 +9,8 @@ struct NameHash {
 struct HvaultCatalogQueryData
 {
     HvaultDeparseContext deparse;
-    char const * sort_column;
-    bool sort_desc;
+    List * sort_columns;
+    List * sort_descs;
     size_t limit_qual;
     struct NameHash * columns;
 };
@@ -27,8 +27,8 @@ hvaultCatalogInitQuery (HvaultTableInfo const * table)
 {
     HvaultCatalogQuery query = palloc(sizeof(struct HvaultCatalogQueryData));
     hvaultDeparseContextInit(&query->deparse, table);
-    query->sort_column = NULL;
-    query->sort_desc = false;
+    query->sort_columns = NIL;
+    query->sort_descs = NIL;
     query->limit_qual = NO_LIMIT;
     query->columns = NULL;
     return query;
@@ -48,10 +48,10 @@ hvaultCatalogCloneQuery (HvaultCatalogQuery query)
         s->key = p->key;
         HASH_ADD_KEYPTR(hh, res->columns, s->key, strlen(s->key), s);
     }
-    if (query->sort_column != NULL)
+    if (query->sort_columns != NIL)
     {
-        res->sort_column = pstrdup(query->sort_column);
-        res->sort_desc = query->sort_desc;
+        res->sort_columns = list_copy(query->sort_columns);
+        res->sort_descs = list_copy(query->sort_descs);
     }
     res->limit_qual = query->limit_qual;
     return res;
@@ -62,9 +62,7 @@ void
 hvaultCatalogFreeQuery (HvaultCatalogQuery query)
 {
     hvaultDeparseContextFree(&query->deparse);
-    if (query->sort_column != NULL)
-        pfree((void *) query->sort_column);
-
+    hvaultCatalogResetSort(query);
     HASH_CLEAR(hh, query->columns);
 }
 
@@ -92,14 +90,32 @@ hvaultCatalogAddQual (HvaultCatalogQuery query,
     hvaultDeparseQual(qual, &query->deparse);
 }
 
+void 
+hvaultCatalogResetSort (HvaultCatalogQuery query)
+{
+    ListCell * l;
+    foreach(l, query->sort_columns) 
+    {
+        pfree(lfirst(l));
+    }
+
+    list_free(query->sort_columns);
+    list_free(query->sort_descs);
+    query->sort_columns = NIL;
+    query->sort_descs = NIL;
+}
+
 /* Add sort qual to query */
 void 
-hvaultCatalogSetSort (HvaultCatalogQuery query, 
+hvaultCatalogAddSort (HvaultCatalogQuery query, 
                       char const *       qual,
                       bool               desc)
 {
-    query->sort_column = qual != NULL ? pstrdup(qual) : NULL;
-    query->sort_desc = desc;
+    if (qual == NULL)
+        return;
+   
+    query->sort_columns = lappend(query->sort_columns, pstrdup(qual));
+    query->sort_descs = lappend_int(query->sort_descs, desc);
 }
 
 /* Add limit qual to query */
@@ -141,12 +157,26 @@ static void buildQueryString (HvaultCatalogQuery query, StringInfo query_str)
                            quote_identifier(query->deparse.table->catalog));
     appendStringInfoString(query_str, query->deparse.query.data);
 
-    if (query->sort_column)
+    if (list_length(query->sort_columns) > 0)
     {
+        ListCell *l, *m;
+        int pos = 0;
+
         appendStringInfoString(query_str, " ORDER BY ");
-        appendStringInfoString(query_str, query->sort_column);
-        if (query->sort_desc)
-            appendStringInfoString(query_str, " DESC");
+
+        forboth(l, query->sort_columns, m, query->sort_descs)
+        {
+            char * column = (char *) lfirst(l);
+            bool desc = lfirst_int(m);
+            
+            if (pos > 0)
+                appendStringInfoString(query_str, ", ");
+
+            pos++;
+            appendStringInfoString(query_str, column);
+            if (desc)
+                appendStringInfoString(query_str, " DESC");
+        }
     }
 
     if (query->limit_qual != NO_LIMIT)

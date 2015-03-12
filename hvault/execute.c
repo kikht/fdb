@@ -859,7 +859,7 @@ aquireSampleRows(Relation relation,
         num_files = 5;
     query = hvaultCatalogInitQuery(&table);
     hvaultCatalogAddColumn(query, "*");
-    hvaultCatalogSetSort(query, "random()", false);
+    hvaultCatalogAddSort(query, "random()", false);
     hvaultCatalogSetLimit(query, num_files);
 
     state = makeExecState();

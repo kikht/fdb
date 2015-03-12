@@ -17,13 +17,6 @@
 
 typedef struct 
 {
-    List * pathkeys;
-    char const * column;
-    bool desc;
-} SortInfo;
-
-typedef struct 
-{
     PlannerInfo *root;
     RelOptInfo *baserel;
     Oid foreigntableid;
@@ -62,6 +55,27 @@ typedef struct
     List *predicates;
 } HvaultPathData;
 
+static Var *
+getECVar (EquivalenceClass * ec, Index relid)
+{
+    ListCell *m;
+    foreach(m, ec->ec_members)
+    {
+        EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
+        Var *var;
+
+        if (!IsA(em->em_expr, Var))
+            continue;
+       
+        var = (Var *) em->em_expr;
+        if (var->varno != relid)
+            continue;
+
+        return var;
+    }
+    return NULL;
+}
+
 static void   
 getSortPathKeys (HvaultPlannerContext * ctx)
 {
@@ -69,65 +83,54 @@ getSortPathKeys (HvaultPlannerContext * ctx)
     PathKey *line_pk = NULL, *sample_pk = NULL, *index_pk = NULL;
     List *tails = NIL;
     List *catalog_pk = NIL;
-    List *catalog_attnum = NIL;
 
     foreach(l, ctx->root->canon_pathkeys)
     {
         PathKey * pk = lfirst(l);
         EquivalenceClass *ec = pk->pk_eclass;
+        Var * var;
 
         if (!bms_is_member(ctx->baserel->relid, ec->ec_relids))
             continue;
 
-        foreach(m, ec->ec_members)
-        {
-            Var *var;
-            EquivalenceMember *em = (EquivalenceMember *) lfirst(m);
-
-            if (!IsA(em->em_expr, Var))
-                continue;
+        var = getECVar(ec, ctx->baserel->relid);
+        if (var == NULL)
+            continue;
         
-            var = (Var *) em->em_expr;
-            if (ctx->baserel->relid != var->varno)
-                continue;
-
-            Assert(var->varattno <= table(ctx)->natts);
-            switch (table(ctx)->columns[var->varattno-1].type)
-            {
-                case HvaultColumnIndex:
-                    if (pk->pk_strategy == BTLessStrategyNumber)
-                    {
-                        if (index_pk)
-                            elog(ERROR, "Duplicate index column");
-                        index_pk = pk;
-                    }
-                    break;
-                case HvaultColumnLineIdx:
-                    if (pk->pk_strategy == BTLessStrategyNumber)
-                    {
-                        if (line_pk)
-                            elog(ERROR, "Duplicate index column");
-                        line_pk = pk;
-                    }
-                    break;
-                case HvaultColumnSampleIdx:
-                    if (pk->pk_strategy == BTLessStrategyNumber)
-                    {
-                        if (sample_pk)
-                            elog(ERROR, "Duplicate index column");
-                        sample_pk = pk;
-                    }
-                    break;
-                case HvaultColumnCatalog:
-                    catalog_pk = lappend(catalog_pk, pk);
-                    catalog_attnum = lappend_int(catalog_attnum, 
-                                                 var->varattno - 1);
-                    break;
-                default:
-                    /*nop*/
-                    break;
-            }
-        }        
+        Assert(var->varattno <= table(ctx)->natts);
+        switch (table(ctx)->columns[var->varattno-1].type)
+        {
+            case HvaultColumnIndex:
+                if (pk->pk_strategy == BTLessStrategyNumber)
+                {
+                    if (index_pk)
+                        elog(ERROR, "Duplicate index column");
+                    index_pk = pk;
+                }
+                break;
+            case HvaultColumnLineIdx:
+                if (pk->pk_strategy == BTLessStrategyNumber)
+                {
+                    if (line_pk)
+                        elog(ERROR, "Duplicate index column");
+                    line_pk = pk;
+                }
+                break;
+            case HvaultColumnSampleIdx:
+                if (pk->pk_strategy == BTLessStrategyNumber)
+                {
+                    if (sample_pk)
+                        elog(ERROR, "Duplicate index column");
+                    sample_pk = pk;
+                }
+                break;
+            case HvaultColumnCatalog:
+                catalog_pk = lappend(catalog_pk, pk);
+                break;
+            default:
+                /*nop*/
+                break;
+        }
     }
 
     if (index_pk)
@@ -144,22 +147,29 @@ getSortPathKeys (HvaultPlannerContext * ctx)
     if (list_length(tails) == 0)
         tails = list_make1(NIL);
 
-    forboth(l, catalog_pk, m, catalog_attnum)
+
+    foreach(l, tails)
     {
-        PathKey * pk = lfirst(l);
-        AttrNumber attno = lfirst_int(m);
-
-        foreach(k, tails)
+        List * tail = (List *) lfirst(l);
+        foreach(m, catalog_pk)
         {
-            List *tail = lfirst(k);
-            SortInfo * sort = palloc(sizeof(SortInfo));
+            PathKey * pk1 = (PathKey *) lfirst(m);
+            List * pathkeys;
 
-            sort->column = table(ctx)->columns[attno].cat_name;
-            sort->desc = pk->pk_strategy == BTGreaterStrategyNumber;
-            sort->pathkeys = list_make1(pk);
-            sort->pathkeys = list_concat(sort->pathkeys, tail);
+            pathkeys = list_make1(pk1);
+            pathkeys = list_concat(pathkeys, tail);
+            ctx->sort_list = lappend(ctx->sort_list, pathkeys);
 
-            ctx->sort_list = lappend(ctx->sort_list, sort);
+            foreach(k, catalog_pk)
+            {
+                PathKey *pk2 = (PathKey *) lfirst(k);
+                if (pk1 == pk2)
+                    continue;
+
+                pathkeys = list_make2(pk1, pk2);
+                pathkeys = list_concat(pathkeys, tail);
+                ctx->sort_list = lappend(ctx->sort_list, pathkeys);
+            }
         }
     }
 }
@@ -214,7 +224,8 @@ addForeignPaths (HvaultPlannerContext * ctx,
 
     foreach(l, ctx->sort_list)
     {
-        SortInfo * sort = lfirst(l);
+        List * pathkeys = (List *) lfirst(l);
+        ListCell *m;
         Cost catmin, catmax;
         double catrows;
         int catwidth;
@@ -222,7 +233,23 @@ addForeignPaths (HvaultPlannerContext * ctx,
         Cost startup_cost, total_cost, file_cost, pixel_cost;
         Selectivity selectivity;
 
-        hvaultCatalogSetSort(query, sort->column, sort->desc);
+        hvaultCatalogResetSort(query);
+        foreach(m, pathkeys)
+        {
+            PathKey *pk = (PathKey *) lfirst(m);
+            Var *var = getECVar(pk->pk_eclass, ctx->baserel->relid);
+            HvaultColumnInfo * colinfo;
+
+            Assert(var != NULL);
+            colinfo = &(table(ctx)->columns[var->varattno-1]);
+            
+            if (colinfo->type != HvaultColumnCatalog)
+                break;
+
+            hvaultCatalogAddSort(query, colinfo->cat_name, 
+                                 pk->pk_strategy == BTGreaterStrategyNumber);
+        }
+
         hvaultCatalogGetCosts(query, &catmin, &catmax, &catrows, &catwidth);
         selectivity = clauselist_selectivity(ctx->root, pred_quals, 
                                              ctx->baserel->relid, 
@@ -238,7 +265,7 @@ addForeignPaths (HvaultPlannerContext * ctx,
             + rows * pixel_cost;
 
         if (add_path_precheck(ctx->baserel, startup_cost, total_cost, 
-                              sort->pathkeys, req_outer))
+                              pathkeys, req_outer))
         {
             ForeignPath *path;
             HvaultPathData *path_data;
@@ -252,7 +279,7 @@ addForeignPaths (HvaultPlannerContext * ctx,
 
             path = create_foreignscan_path(ctx->root, ctx->baserel, rows, 
                                            startup_cost, total_cost, 
-                                           sort->pathkeys, req_outer, 
+                                           pathkeys, req_outer, 
                                            (List *) path_data);
             add_path(ctx->baserel, (Path *) path);
         }
@@ -437,7 +464,6 @@ hvaultGetPaths (PlannerInfo *root,
 {
     ListCell *l, *m, *k;
     int considered_clauses;
-    SortInfo * no_sort_info = palloc(sizeof(SortInfo));
     HvaultPlannerContext * ctx = baserel->fdw_private;
 
     elog(DEBUG1, "in hvaultGetPaths");
@@ -458,9 +484,7 @@ hvaultGetPaths (PlannerInfo *root,
     {
         getSortPathKeys(ctx);
     }
-    no_sort_info->pathkeys = NIL;
-    no_sort_info->column = NULL;
-    ctx->sort_list = lappend(ctx->sort_list, no_sort_info);
+    ctx->sort_list = lappend(ctx->sort_list, NIL);
 
     extractCatalogQuals(ctx);
     /* Create simple unparametrized path */
